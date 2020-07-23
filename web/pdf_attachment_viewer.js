@@ -109,6 +109,7 @@ class PDFAttachmentViewer {
         URL.revokeObjectURL(blobUrl);
         blobUrl = null;
         // ... and fallback to downloading the PDF file.
+        
         this.downloadManager.downloadData(content, filename, "application/pdf");
       }
       return false;

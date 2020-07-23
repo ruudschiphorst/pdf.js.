@@ -12,7 +12,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 "use strict";
 
 if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("CHROME")) {
@@ -76,6 +75,7 @@ function getViewerConfiguration() {
       openFile: document.getElementById("openFile"),
       print: document.getElementById("print"),
       presentationModeButton: document.getElementById("presentationMode"),
+      attachmentAudio: document.getElementById("attachmentAudio"),	//RUUD
       download: document.getElementById("download"),
       viewBookmark: document.getElementById("viewBookmark"),
     },
@@ -117,6 +117,7 @@ function getViewerConfiguration() {
       outerContainer: document.getElementById("outerContainer"),
       viewerContainer: document.getElementById("viewerContainer"),
       toggleButton: document.getElementById("sidebarToggle"),
+      
       // Buttons
       thumbnailButton: document.getElementById("viewThumbnail"),
       outlineButton: document.getElementById("viewOutline"),

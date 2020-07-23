@@ -131,6 +131,8 @@ const KNOWN_GENERATORS = [
   "fpdf",
 ];
 
+var audio = null;
+
 class DefaultExternalServices {
   constructor() {
     throw new Error("Cannot initialize DefaultExternalServices.");
@@ -505,7 +507,7 @@ const PDFViewerApplication = {
       eventBus,
       linkService: pdfLinkService,
     });
-
+    
     this.pdfAttachmentViewer = new PDFAttachmentViewer({
       container: appConfig.sidebar.attachmentsView,
       eventBus,
@@ -1696,6 +1698,7 @@ const PDFViewerApplication = {
     eventBus._on("findfromurlhash", webViewerFindFromUrlHash);
     eventBus._on("updatefindmatchescount", webViewerUpdateFindMatchesCount);
     eventBus._on("updatefindcontrolstate", webViewerUpdateFindControlState);
+    eventBus._on("playorpauseaudiofromattachment", playOrPauseAudioFromAttachment); //RUUD
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
       eventBus._on("fileinputchange", webViewerFileInputChange);
       eventBus._on("openfile", webViewerOpenFile);
@@ -2267,6 +2270,98 @@ if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
 function webViewerPresentationMode() {
   PDFViewerApplication.requestPresentationMode();
 }
+function playOrPauseAudioFromAttachment() {
+	
+	//Als audio speelt, dan pauseren
+	if(audio){
+		if(!audio.paused){
+			audio.pause();
+			return;
+		}
+	}
+
+	//Haal attachments op
+	var att = PDFViewerApplication.pdfAttachmentViewer.attachments;
+	const names = Object.keys(att).sort(function (a, b) {
+	      return a.toLowerCase().localeCompare(b.toLowerCase());
+	    });
+	    var attachmentsCount = names.length;
+
+	    //Loop door attachments
+	    for (let i = 0; i < attachmentsCount; i++) {
+	      const item = att[names[i]];
+	      //Alleen MP3 bestanden accepteren (zo genereert Stempol ze ook. Evt uitbreiden met andere extenties)
+	      if(att[names[i]].filename.endsWith(".mp3")){
+	    	  //Maak er een blob van (binair bestand)
+		      var blob = new Blob([item.content],{type: "audio/mpeg"});
+		      //Maak een URL aan, want dat wil een Audio object graag zien
+		      const itemurl = URL.createObjectURL(blob);
+		      //Laad de audio in
+		      //Variabele is globaal, zodat we ook kunnen stoppen en zo
+		      audio = new Audio(itemurl);
+		      //Als de tijd van afspelen verandert, dan willen we corresponderende annotation markeren
+		      audio.ontimeupdate = function(){ 	
+		    	  //Haal alle elementen uit de annotationLayer in de HTML op
+		    	  var ancestor = document.getElementById('annotationLayer'),
+		    	  descendents = ancestor.getElementsByTagName('*');
+		    	  
+		    	  //1 keer zetten, we willen niet dat halverwege deze functie de tijd wijzigt en de boel in de soep loopt
+		    	  var audioCurrentTime = audio.currentTime
+		    	  
+		    	  var i, thisAnnotation, nextAnnotation;
+		    	  //Loop alle elementen in annotationLayer
+			      for (i = 0; i < descendents.length; ++i) {
+			    	  //Het is een <section> met daarin een <a>, gevolgd door een <section> met een <a>
+			    	  //We zijn alleen geintereseerd in de <a> elementen, dus we doen +2 (en slaan daarmee de sections over)
+				  	  thisAnnotation = descendents[i];
+				  	  nextAnnotation = descendents[i+2];
+				  	  //Deze annotation moet dus een <a>  zijn, specifiek voor audio bestanden. Die herkennen we aan de URL waar "audio@ in zit"
+				  	  if(thisAnnotation.tagName === 'A' && thisAnnotation.href.includes("audio@")){
+				  		  //Haal het tijdstip van deze annotatie op
+				  		  var urlArr = thisAnnotation.href.split("#");
+				  	      var thisLinkTime = urlArr[urlArr.length - 1].replace('audio@','');
+				  	      //Haal het tijdstip van de volgende <a> op, tenzij er geen volgende <a> is, dan is het volgende tijdstip 999999
+				  	      var nextLinkTime;
+				  	      if(nextAnnotation === undefined){
+				  	    	  nextLinkTime = 999999;
+				  	      }else{
+				  	    	  urlArr = nextAnnotation.href.split("#");
+				  	    	  nextLinkTime = urlArr[urlArr.length - 1].replace('audio@','');
+				  	      }
+				  	      //Markeer de annotation die relevant is en on-markeer (dat is bij deze een woord) de rest
+				  		  if(audioCurrentTime >= thisLinkTime  && audioCurrentTime < nextLinkTime ){
+				  			  thisAnnotation.style.backgroundColor = "rgba(128, 128, 128, 0.5)";
+				  		  }else{
+				  			thisAnnotation.style.backgroundColor = null;
+				  		  }
+				  	  }
+			      }
+			  }; 
+			  //Als de audio stopt willen we alle annotations on-markeren (wat nog steeds een woord is)
+			  audio.onpause = function(){ 	
+				  var ancestor = document.getElementById('annotationLayer'),
+		    	  descendents = ancestor.getElementsByTagName('*');
+		    	  var audioCurrentTime = audio.currentTime
+		    	  
+		    	  var i, thisAnnotation;
+		    	  
+		    	  //Loop alle <a> elementen en haal markup weg
+		    	  for (i = 0; i < descendents.length; ++i) {
+				  	  thisAnnotation = descendents[i];
+				  	  if(thisAnnotation.tagName === 'A' && thisAnnotation.href.includes("audio@")){
+				  		thisAnnotation.style.backgroundColor = null;
+				  	  }
+		    	  }
+		    	  
+			  }
+		      audio.play();
+		      //We spelen het eerste audio bestand af. Zitten er meer dan 1 in, dan moeten we daar iets op verzinnen
+		      return;
+	      }
+	  }
+}
+
+
 function webViewerPrint() {
   window.print();
 }
@@ -2480,8 +2575,35 @@ function webViewerWheel(evt) {
 }
 
 function webViewerClick(evt) {
+	
+	//Begin eigen aanpassing
+	//Bepaal waar op geklikt is
+	evt = evt || window.event;
+	var target = evt.target || evt.srcElement,
+	text = target.textContent || target.innerText; 
+
+	//Bekijk de parent van de parent waar op geklikt is
+	var grandparentClassname = target.parentNode.parentNode.className;
+	
+	//De parent van de parent van de annotations waar we in geinteresseerd zijn is de annotationLayer
+	//Is het iets anders, dan doen wij niets
+	
+	if(grandparentClassname === "annotationLayer"){
+		//De url van onze eigen annotations die audio doen verplaatsen zien er uit als "#audio@5.0", 
+		//wat betekent "speel af op 5.0 seconden". Bepaal dat tijdstip door de url te analysere
+		var urlArr = target.href.split("#");
+		var timeToJumpTo = urlArr[urlArr.length - 1].replace('audio@','');
+		
+		//Als de audio nog niet afgespeeld wordt, doe dat dan eerst
+		if(!audio || audio.paused){
+			playOrPauseAudioFromAttachment();
+		}
+		audio.currentTime = timeToJumpTo;
+	}
+	//Einde eigen aanpassing
+	
   // Avoid triggering the fallback bar when the user clicks on the
-  // toolbar or sidebar.
+  // toolbar or sidebar. 
   if (
     PDFViewerApplication.triggerDelayedFallback &&
     PDFViewerApplication.pdfViewer.containsElement(evt.target)

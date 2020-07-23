@@ -111,12 +111,19 @@ class PDFLinkService {
    * @param {string|Array} dest - The named, or explicit, PDF destination.
    */
   navigateTo(dest) {
+	  
+	  if(dest.includes('audio@')){
+		return;  
+	  }
+	  
     const goToDestination = ({ namedDest, explicitDest }) => {
       // Dest array looks like that: <page-ref> </XYZ|/FitXXX> <args..>
       const destRef = explicitDest[0];
       let pageNumber;
-
+      
       if (destRef instanceof Object) {
+    	  
+    	  
         pageNumber = this._cachedPageNumber(destRef);
 
         if (pageNumber === null) {

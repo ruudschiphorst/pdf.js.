@@ -442,7 +442,7 @@ class PDFPageView {
       } else {
         div.appendChild(textLayerDiv);
       }
-
+      
       textLayer = this.textLayerFactory.createTextLayerBuilder(
         textLayerDiv,
         this.id - 1,
