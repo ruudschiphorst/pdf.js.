@@ -1698,7 +1698,7 @@ const PDFViewerApplication = {
     eventBus._on("findfromurlhash", webViewerFindFromUrlHash);
     eventBus._on("updatefindmatchescount", webViewerUpdateFindMatchesCount);
     eventBus._on("updatefindcontrolstate", webViewerUpdateFindControlState);
-    eventBus._on("playorpauseaudiofromattachment", playOrPauseAudioFromAttachment); //RUUD
+    eventBus._on("playpause", playPause); //RUUD
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
       eventBus._on("fileinputchange", webViewerFileInputChange);
       eventBus._on("openfile", webViewerOpenFile);
@@ -2270,18 +2270,52 @@ if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
 function webViewerPresentationMode() {
   PDFViewerApplication.requestPresentationMode();
 }
-function playOrPauseAudioFromAttachment() {
-	
-	//Als audio speelt, dan pauseren
+
+function playPause(){
+	if(audio && !audio.paused && !audio.ended){
+		audio.pause();
+	}else{
+		playAudioFromAttachment(null);
+	}
+}
+
+function playAudioFromAttachment(timeStartAt = 0.0) {
+	//Ruud
+	//Als audio bestaat, dan niet ophalen
 	if(audio){
-		if(!audio.paused){
-			audio.pause();
+		//Dan jumpen naar tijdstip van argument, tenzij null, dan pauze
+		if(timeStartAt != null){
+			if(isNaN(audio.duration) || timeStartAt < audio.duration){
+				audio.currentTime = timeStartAt;
+			}else{
+				audio.currentTime = 999999;
+			}
+			if(audio.paused){
+				audio.play();
+			}
+			return;
+		}else{
+			if(!audio.paused){
+				audio.pause();
+			}else{
+				audio.play();
+			}
 			return;
 		}
+	}else{
+		createAudioPlayer();
+		playAudioFromAttachment(timeStartAt || 0.0);
 	}
+}
 
+function createAudioPlayer(){
+
+	//Audio speelt nog niet of heeft einde bereikt. Haal eerste MP3 op en speel die af
 	//Haal attachments op
 	var att = PDFViewerApplication.pdfAttachmentViewer.attachments;
+	if(att == null){
+		return;
+	}
 	const names = Object.keys(att).sort(function (a, b) {
 	      return a.toLowerCase().localeCompare(b.toLowerCase());
 	    });
@@ -2303,7 +2337,7 @@ function playOrPauseAudioFromAttachment() {
 		      audio.ontimeupdate = function(){ 	
 		    	  //Haal alle elementen uit de annotationLayer in de HTML op
 		    	  var ancestor = document.getElementById('annotationLayer'),
-		    	  descendents = ancestor.getElementsByTagName('*');
+		    	  descendents = ancestor.getElementsByTagName('A');
 		    	  
 		    	  //1 keer zetten, we willen niet dat halverwege deze functie de tijd wijzigt en de boel in de soep loopt
 		    	  var audioCurrentTime = audio.currentTime
@@ -2314,7 +2348,7 @@ function playOrPauseAudioFromAttachment() {
 			    	  //Het is een <section> met daarin een <a>, gevolgd door een <section> met een <a>
 			    	  //We zijn alleen geintereseerd in de <a> elementen, dus we doen +2 (en slaan daarmee de sections over)
 				  	  thisAnnotation = descendents[i];
-				  	  nextAnnotation = descendents[i+2];
+				  	  nextAnnotation = descendents[i+1];
 				  	  //Deze annotation moet dus een <a>  zijn, specifiek voor audio bestanden. Die herkennen we aan de URL waar "audio@ in zit"
 				  	  if(thisAnnotation.tagName === 'A' && thisAnnotation.href.includes("audio@")){
 				  		  //Haal het tijdstip van deze annotatie op
@@ -2341,8 +2375,7 @@ function playOrPauseAudioFromAttachment() {
 			  audio.onpause = function(){ 	
 				  var ancestor = document.getElementById('annotationLayer'),
 		    	  descendents = ancestor.getElementsByTagName('*');
-		    	  var audioCurrentTime = audio.currentTime
-		    	  
+				  
 		    	  var i, thisAnnotation;
 		    	  
 		    	  //Loop alle <a> elementen en haal markup weg
@@ -2354,13 +2387,12 @@ function playOrPauseAudioFromAttachment() {
 		    	  }
 		    	  
 			  }
-		      audio.play();
+//		      audio.play();
 		      //We spelen het eerste audio bestand af. Zitten er meer dan 1 in, dan moeten we daar iets op verzinnen
 		      return;
 	      }
 	  }
 }
-
 
 function webViewerPrint() {
   window.print();
@@ -2575,31 +2607,62 @@ function webViewerWheel(evt) {
 }
 
 function webViewerClick(evt) {
-	
-	//Begin eigen aanpassing
-	//Bepaal waar op geklikt is
-	evt = evt || window.event;
-	var target = evt.target || evt.srcElement,
-	text = target.textContent || target.innerText; 
 
-	//Bekijk de parent van de parent waar op geklikt is
-	var grandparentClassname = target.parentNode.parentNode.className;
+	//Begin eigen aanpassing
 	
-	//De parent van de parent van de annotations waar we in geinteresseerd zijn is de annotationLayer
-	//Is het iets anders, dan doen wij niets
+	//Ruud
 	
-	if(grandparentClassname === "annotationLayer"){
-		//De url van onze eigen annotations die audio doen verplaatsen zien er uit als "#audio@5.0", 
-		//wat betekent "speel af op 5.0 seconden". Bepaal dat tijdstip door de url te analysere
-		var urlArr = target.href.split("#");
-		var timeToJumpTo = urlArr[urlArr.length - 1].replace('audio@','');
-		
-		//Als de audio nog niet afgespeeld wordt, doe dat dan eerst
-		if(!audio || audio.paused){
-			playOrPauseAudioFromAttachment();
-		}
-		audio.currentTime = timeToJumpTo;
+	let firedPlayAudio = false;
+	let s = window.getSelection();
+	if(s.anchorNode != null){
+	    let range = s.getRangeAt(0);
+	    let node = s.anchorNode;
+	    
+	    while (range.startOffset !== 0) {                   // start of node
+	        range.setStart(node, range.startOffset - 1)     // back up 1 char
+	        if (range.toString().search(/\s/) === 0) {      // space character
+	            range.setStart(node, range.startOffset + 1);// move forward 1 char
+	            break;
+	        }
+	    }
+	
+	    while (range.endOffset < node.length) {         // end of node
+	        range.setEnd(node, range.endOffset + 1)     // forward 1 char
+	        if (range.toString().search(/\s/) !== -1) { // space character
+	            range.setEnd(node, range.endOffset - 1);// back 1 char
+	            break;
+	        }
+	    }    
+	    window.getSelection().removeAllRanges();
+	    let str = range.toString().trim();
+	    if(/(?:[01]\d|2[0123]):(?:[012345]\d):(?:[012345]\d)/.test(str)){
+	    	let a = str.split(':'); // split it at the colons
+	    	let seconds = (+a[0]) * 60 * 60 + (+a[1]) * 60 + (+a[2]);
+	    	firedPlayAudio = true;
+	    	playAudioFromAttachment(seconds);
+	    }
 	}
+	
+	if(!firedPlayAudio){
+		//Bepaal waar op geklikt is
+		evt = evt || window.event;
+		var target = evt.target || evt.srcElement;
+	
+		//Bekijk de parent van de parent waar op geklikt is
+		var grandparentClassname = target.parentNode.parentNode.className;
+		
+		//De parent van de parent van de annotations waar we in geinteresseerd zijn is de annotationLayer
+		//Is het iets anders, dan doen wij niets
+		
+		if(grandparentClassname === "annotationLayer"){
+			//De url van onze eigen annotations die audio doen verplaatsen zien er uit als "#audio@5.0", 
+			//wat betekent "speel af op 5.0 seconden". Bepaal dat tijdstip door de url te analysere
+			var urlArr = target.href.split("#");
+			var timeToJumpTo = urlArr[urlArr.length - 1].replace('audio@','');
+			playAudioFromAttachment(timeToJumpTo);
+		}
+	}
+	firedPlayAudio = false;
 	//Einde eigen aanpassing
 	
   // Avoid triggering the fallback bar when the user clicks on the

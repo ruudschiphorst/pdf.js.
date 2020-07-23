@@ -75,7 +75,7 @@ class Toolbar {
       },
       {
           element: options.attachmentAudio,
-          eventName: "playorpauseaudiofromattachment",		//RUUD
+          eventName: "playpause",		//RUUD
       },
       { element: options.download, eventName: "download" },
       { element: options.viewBookmark, eventName: null },
