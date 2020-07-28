@@ -132,6 +132,7 @@ const KNOWN_GENERATORS = [
 ];
 
 var audio = null;
+var init = false;
 
 class DefaultExternalServices {
   constructor() {
@@ -2271,7 +2272,53 @@ function webViewerPresentationMode() {
   PDFViewerApplication.requestPresentationMode();
 }
 
+function getAnnotationByPosition(x, width){
+	let ancestor = document.getElementById('annotationLayer'),
+	  descendents = ancestor.getElementsByTagName('SECTION');
+
+	  let i, thisAnnotation;
+	  //Loop alle elementen in annotationLayer
+	  for (i = 0; i < descendents.length; ++i) {
+		  thisAnnotation = descendents[i];
+		  if(thisAnnotation.getBoundingClientRect().x === x &&
+				  Math.trunc(thisAnnotation.getBoundingClientRect().width)  === Math.trunc(width)){
+			  return thisAnnotation;
+		  }
+		  
+	  }
+	  return null;
+	
+	
+}
+
+function pixToFloat(pix){
+	let asString = pix.replace('px','');
+	return parseFloat(asString);
+}
+
 function playPause(){
+	
+	
+	if(!init){
+		var thisElement;
+		var ancestor = document.getElementById('viewer'),
+		descendents = ancestor.getElementsByTagName('SPAN');
+		
+		for (let i = 0; i < descendents.length; ++i) {
+			thisElement = descendents[i];
+			var thisAnnotation = getAnnotationByPosition(thisElement.getBoundingClientRect().x, thisElement.getBoundingClientRect().width);
+			if(thisAnnotation != null){
+				var urlArr = thisAnnotation.firstElementChild.href.split("#");
+		    	let myLinkTime = urlArr[urlArr.length - 1].replace('audio@','');
+				thisElement.onclick = function() { playAudioFromAttachment(myLinkTime.split("-")[0]);} 
+				thisElement.style.cursor = 'pointer';
+				thisElement.setAttribute('data_audio_at', myLinkTime);
+				thisAnnotation.innerHtml ='';
+				thisAnnotation.parentNode.removeChild(thisAnnotation);
+			}
+		}
+		init = true;
+	}
 	if(audio && !audio.paused && !audio.ended){
 		audio.pause();
 	}else{
@@ -2285,9 +2332,13 @@ function playAudioFromAttachment(timeStartAt = 0.0) {
 	if(audio){
 		//Dan jumpen naar tijdstip van argument, tenzij null, dan pauze
 		if(timeStartAt != null){
+			//Audio.duration = NaN als hij nog nooit heeft gespeeld
+			//Is dat het geval, zet dan de tijd maar gewoon op aangegeven tijdstip
 			if(isNaN(audio.duration) || timeStartAt < audio.duration){
 				audio.currentTime = timeStartAt;
 			}else{
+				//Duration < aangegeven tijd. Zet hem daarom maar op onderstaande waarde (i.e. 11,5 dag)
+				//Op deze manier skippen we naar het einde 
 				audio.currentTime = 999999;
 			}
 			if(audio.paused){
@@ -2333,65 +2384,109 @@ function createAudioPlayer(){
 		      //Laad de audio in
 		      //Variabele is globaal, zodat we ook kunnen stoppen en zo
 		      audio = new Audio(itemurl);
+		      
+		      const spans = getSpansWithDataId();
 		      //Als de tijd van afspelen verandert, dan willen we corresponderende annotation markeren
 		      audio.ontimeupdate = function(){ 	
-		    	  //Haal alle elementen uit de annotationLayer in de HTML op
-		    	  var ancestor = document.getElementById('annotationLayer'),
-		    	  descendents = ancestor.getElementsByTagName('A');
+//		    	  //Haal alle elementen uit de annotationLayer in de HTML op
+//		    	  var ancestor = document.getElementById('annotationLayer'),
+//		    	  descendents = ancestor.getElementsByTagName('data_audio_at');
+//		    	  
 		    	  
 		    	  //1 keer zetten, we willen niet dat halverwege deze functie de tijd wijzigt en de boel in de soep loopt
 		    	  var audioCurrentTime = audio.currentTime
 		    	  
-		    	  var i, thisAnnotation, nextAnnotation;
+		    	  var thisSpan;
 		    	  //Loop alle elementen in annotationLayer
-			      for (i = 0; i < descendents.length; ++i) {
-			    	  //Het is een <section> met daarin een <a>, gevolgd door een <section> met een <a>
-			    	  //We zijn alleen geintereseerd in de <a> elementen, dus we doen +2 (en slaan daarmee de sections over)
-				  	  thisAnnotation = descendents[i];
-				  	  nextAnnotation = descendents[i+1];
-				  	  //Deze annotation moet dus een <a>  zijn, specifiek voor audio bestanden. Die herkennen we aan de URL waar "audio@ in zit"
-				  	  if(thisAnnotation.tagName === 'A' && thisAnnotation.href.includes("audio@")){
-				  		  //Haal het tijdstip van deze annotatie op
-				  		  var urlArr = thisAnnotation.href.split("#");
-				  	      var thisLinkTime = urlArr[urlArr.length - 1].replace('audio@','');
-				  	      //Haal het tijdstip van de volgende <a> op, tenzij er geen volgende <a> is, dan is het volgende tijdstip 999999
-				  	      var nextLinkTime;
-				  	      if(nextAnnotation === undefined){
-				  	    	  nextLinkTime = 999999;
-				  	      }else{
-				  	    	  urlArr = nextAnnotation.href.split("#");
-				  	    	  nextLinkTime = urlArr[urlArr.length - 1].replace('audio@','');
-				  	      }
-				  	      //Markeer de annotation die relevant is en on-markeer (dat is bij deze een woord) de rest
-				  		  if(audioCurrentTime >= thisLinkTime  && audioCurrentTime < nextLinkTime ){
-				  			  thisAnnotation.style.backgroundColor = "rgba(128, 128, 128, 0.5)";
-				  		  }else{
-				  			thisAnnotation.style.backgroundColor = null;
-				  		  }
-				  	  }
+			      for (let i = 0; i < spans.length; ++i) {
+			    	  thisSpan = spans[i];
+			    	  var spanTimerange = thisSpan.getAttribute('data_audio_at').split("-");
+			    	  if(audioCurrentTime > spanTimerange[0] && audioCurrentTime < spanTimerange[1]){
+
+				  		  if(thisSpan.style.backgroundColor !== "rgba(128, 128, 128, 0.5)") {
+				  			  thisSpan.style.textDecoration = "underline";
+				  			  thisSpan.style.fontStyle = "italic";
+				    		  thisSpan.style.backgroundColor = "rgba(128, 128, 128, 0.5)";
+				    		  thisSpan.scrollIntoView();
+				    	  }
+			    	  }else{
+			    		  thisSpan.style.textDecoration = null;
+			    		  thisSpan.style.backgroundColor = null;
+			    	  }
+//			    	  //Het is een <section> met daarin een <a>, gevolgd door een <section> met een <a>
+//			    	  //We zijn alleen geintereseerd in de <a> elementen, dus we doen +2 (en slaan daarmee de sections over)
+//				  	  thisAnnotation = descendents[i];
+//				  	  nextAnnotation = descendents[i+1];
+//				  	  //Deze annotation moet dus een <a>  zijn, specifiek voor audio bestanden. Die herkennen we aan de URL waar "audio@ in zit"
+//				  	  if(thisAnnotation.tagName === 'A' && thisAnnotation.href.includes("audio@")){
+//				  		  //Haal het tijdstip van deze annotatie op
+//				  		  var urlArr = thisAnnotation.href.split("#");
+//				  	      var thisLinkTime = urlArr[urlArr.length - 1].replace('audio@','');
+//				  	      //Haal het tijdstip van de volgende <a> op, tenzij er geen volgende <a> is, dan is het volgende tijdstip 999999
+//				  	      var nextLinkTime;
+//				  	      if(nextAnnotation === undefined){
+//				  	    	  nextLinkTime = 999999;
+//				  	      }else{
+//				  	    	  urlArr = nextAnnotation.href.split("#");
+//				  	    	  nextLinkTime = urlArr[urlArr.length - 1].replace('audio@','');
+//				  	      }
+//				  	      //Markeer de annotation die relevant is en on-markeer (dat is bij deze een woord) de rest
+//				  		  if(audioCurrentTime >= thisLinkTime  && audioCurrentTime < nextLinkTime ){
+//				  			  if(thisAnnotation.style.backgroundColor !== "rgba(128, 128, 128, 0.5)") {
+//				  				  thisAnnotation.style.backgroundColor = "rgba(128, 128, 128, 0.5)";
+//				  				  thisAnnotation.scrollIntoView(); 
+//				  			  }
+//				  		  }else{
+//				  			thisAnnotation.style.backgroundColor = null;
+//				  		  }
+//				  	  }
 			      }
 			  }; 
 			  //Als de audio stopt willen we alle annotations on-markeren (wat nog steeds een woord is)
 			  audio.onpause = function(){ 	
-				  var ancestor = document.getElementById('annotationLayer'),
-		    	  descendents = ancestor.getElementsByTagName('*');
 				  
-		    	  var i, thisAnnotation;
+				  var thisSpan;
+		    	  //Loop alle elementen in annotationLayer
+			      for (let i = 0; i < spans.length; ++i) {
+			    	  thisSpan = spans[i];
+			    	  thisSpan.style.textDecoration = null;
+		    		  thisSpan.style.backgroundColor = null;
+			      }
+//				  var ancestor = document.getElementById('annotationLayer'),
+//		    	  descendents = ancestor.getElementsByTagName('*');
+//				  
+//		    	  var i, thisAnnotation;
+//		    	  
+//		    	  //Loop alle <a> elementen en haal markup weg
+//		    	  for (i = 0; i < descendents.length; ++i) {
+//				  	  thisAnnotation = descendents[i];
+//				  	  if(thisAnnotation.tagName === 'A' && thisAnnotation.href.includes("audio@")){
+//				  		thisAnnotation.style.backgroundColor = null;
+//				  	  }
+//		    	  }
 		    	  
-		    	  //Loop alle <a> elementen en haal markup weg
-		    	  for (i = 0; i < descendents.length; ++i) {
-				  	  thisAnnotation = descendents[i];
-				  	  if(thisAnnotation.tagName === 'A' && thisAnnotation.href.includes("audio@")){
-				  		thisAnnotation.style.backgroundColor = null;
-				  	  }
-		    	  }
-		    	  
-			  }
-//		      audio.play();
+			  };
 		      //We spelen het eerste audio bestand af. Zitten er meer dan 1 in, dan moeten we daar iets op verzinnen
 		      return;
 	      }
 	  }
+}
+
+function getSpansWithDataId() {
+	
+	var retval = [];
+	
+	var ancestor = document.getElementById('viewer'),
+	  descendents = ancestor.getElementsByTagName('SPAN');
+	 for (let i = 0; i < descendents.length; ++i) {
+		 var thisElement = descendents[i];
+		 if(thisElement.hasAttribute("data_audio_at")){
+			retval.push(thisElement); 
+		 }
+	 }
+	 
+	 return retval;
+	
 }
 
 function webViewerPrint() {
@@ -2612,57 +2707,70 @@ function webViewerClick(evt) {
 	
 	//Ruud
 	
-	let firedPlayAudio = false;
-	let s = window.getSelection();
-	if(s.anchorNode != null){
-	    let range = s.getRangeAt(0);
-	    let node = s.anchorNode;
-	    
-	    while (range.startOffset !== 0) {                   // start of node
-	        range.setStart(node, range.startOffset - 1)     // back up 1 char
-	        if (range.toString().search(/\s/) === 0) {      // space character
-	            range.setStart(node, range.startOffset + 1);// move forward 1 char
-	            break;
-	        }
-	    }
 	
-	    while (range.endOffset < node.length) {         // end of node
-	        range.setEnd(node, range.endOffset + 1)     // forward 1 char
-	        if (range.toString().search(/\s/) !== -1) { // space character
-	            range.setEnd(node, range.endOffset - 1);// back 1 char
-	            break;
-	        }
-	    }    
-	    window.getSelection().removeAllRanges();
-	    let str = range.toString().trim();
-	    if(/(?:[01]\d|2[0123]):(?:[012345]\d):(?:[012345]\d)/.test(str)){
-	    	let a = str.split(':'); // split it at the colons
-	    	let seconds = (+a[0]) * 60 * 60 + (+a[1]) * 60 + (+a[2]);
-	    	firedPlayAudio = true;
-	    	playAudioFromAttachment(seconds);
-	    }
-	}
+	//Als we in de audio jumpen door een click op een annotation, dan willen we niet nog een keer jumpen
+	//Als er toevallig een tijdstip in de text is geselecteerd. Deze vlag houdt bij of we al een keer geskipped hebben
+//	let firedPlayAudio = false;
 	
-	if(!firedPlayAudio){
-		//Bepaal waar op geklikt is
-		evt = evt || window.event;
-		var target = evt.target || evt.srcElement;
+	//Bepaal waar op geklikt is
+//	evt = evt || window.event;
+//	var target = evt.target || evt.srcElement;
+//
+//	//Bekijk de parent van de parent waar op geklikt is
+//	var grandparentClassname = target.parentNode.parentNode.className;
+//	
+//	//De parent van de parent van de annotations waar we in geinteresseerd zijn is de annotationLayer
+//	//Is het iets anders, dan doen wij niets
+//	if(grandparentClassname === "annotationLayer"){
+//		if(target.href.includes("audio@")){
+//			//De url van onze eigen annotations die audio doen verplaatsen zien er uit als "#audio@5.0", 
+//			//wat betekent "speel af op 5.0 seconden". Bepaal dat tijdstip door de url te analysere
+//			var urlArr = target.href.split("#");
+//			var timeToJumpTo = urlArr[urlArr.length - 1].replace('audio@','');
+//			playAudioFromAttachment(timeToJumpTo);
+//		}
+//	}
 	
-		//Bekijk de parent van de parent waar op geklikt is
-		var grandparentClassname = target.parentNode.parentNode.className;
-		
-		//De parent van de parent van de annotations waar we in geinteresseerd zijn is de annotationLayer
-		//Is het iets anders, dan doen wij niets
-		
-		if(grandparentClassname === "annotationLayer"){
-			//De url van onze eigen annotations die audio doen verplaatsen zien er uit als "#audio@5.0", 
-			//wat betekent "speel af op 5.0 seconden". Bepaal dat tijdstip door de url te analysere
-			var urlArr = target.href.split("#");
-			var timeToJumpTo = urlArr[urlArr.length - 1].replace('audio@','');
-			playAudioFromAttachment(timeToJumpTo);
-		}
-	}
-	firedPlayAudio = false;
+//	if(!firedPlayAudio){
+//		let s = window.getSelection();
+//		
+//		if(s.anchorNode != null){
+//		    let range = s.getRangeAt(0);
+//		    let node = s.anchorNode;
+//		    let endNode = s.extentNode;
+//		    let startOff = range.startOffset;
+//		    let endOff = range.endOffset;;
+//		    
+//		    while (range.startOffset !== 0) {                   // start of node
+//		        range.setStart(node, range.startOffset - 1)     // back up 1 char
+//		        if (range.toString().search(/\s/) === 0) {      // space character
+//		            range.setStart(node, range.startOffset + 1);// move forward 1 char
+//		            break;
+//		        }
+//		    }
+//		
+//		    while (range.endOffset < node.length) {         // end of node
+//		        range.setEnd(node, range.endOffset + 1)     // forward 1 char
+//		        if (range.toString().search(/\s/) !== -1) { // space character
+//		            range.setEnd(node, range.endOffset - 1);// back 1 char
+//		            break;
+//		        }
+//		    }    
+//		    
+//		    let str = range.toString().trim();
+//
+//		    range.setStart(node, startOff);
+//		    range.setEnd(endNode, endOff);
+//		
+//		    if(/(?:[01]\d|2[0123]):(?:[012345]\d):(?:[012345]\d)/.test(str)){
+//		    	let a = str.split(':'); // split it at the colons
+//		    	let seconds = (+a[0]) * 60 * 60 + (+a[1]) * 60 + (+a[2]);
+//		    	firedPlayAudio = true;
+//		    	playAudioFromAttachment(seconds);
+//		    }
+//		}
+//	}
+//	firedPlayAudio = false;
 	//Einde eigen aanpassing
 	
   // Avoid triggering the fallback bar when the user clicks on the

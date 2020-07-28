@@ -1420,6 +1420,7 @@ class AnnotationLayer {
    * @memberof AnnotationLayer
    */
   static render(parameters) {
+//	  console.log(parameters);
     const sortedAnnotations = [],
       popupAnnotations = [];
     // Ensure that Popup annotations are handled last, since they're dependant
