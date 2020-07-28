@@ -2287,34 +2287,37 @@ function getAnnotationByPosition(x, width){
 		  
 	  }
 	  return null;
-	
-	
-}
-
-function pixToFloat(pix){
-	let asString = pix.replace('px','');
-	return parseFloat(asString);
 }
 
 function playPause(){
 	
-	
 	if(!init){
+		//Verwijder alle annotations die onze audio@ gebruiken en zoek bijbehorende normale text op
+		//Pas bijbehorende normale text aan door een attribute te zetten en mouse cursor te veranderen
 		var thisElement;
 		var ancestor = document.getElementById('viewer'),
 		descendents = ancestor.getElementsByTagName('SPAN');
 		
+		//Bekijk alle <span> objecten in de viewer
 		for (let i = 0; i < descendents.length; ++i) {
 			thisElement = descendents[i];
+			//Kijk of er een annotation over deze <span> ligt
 			var thisAnnotation = getAnnotationByPosition(thisElement.getBoundingClientRect().x, thisElement.getBoundingClientRect().width);
+			//Als er een annotation overheen ligt...
 			if(thisAnnotation != null){
-				var urlArr = thisAnnotation.firstElementChild.href.split("#");
-		    	let myLinkTime = urlArr[urlArr.length - 1].replace('audio@','');
-				thisElement.onclick = function() { playAudioFromAttachment(myLinkTime.split("-")[0]);} 
-				thisElement.style.cursor = 'pointer';
-				thisElement.setAttribute('data_audio_at', myLinkTime);
-				thisAnnotation.innerHtml ='';
-				thisAnnotation.parentNode.removeChild(thisAnnotation);
+				if(thisAnnotation.childElementCount > 0 &&
+						thisAnnotation.hasAttribute("href") &&
+						thisAnnotation.firstElementChild.href.includes('audio@')){
+					
+					var urlArr = thisAnnotation.firstElementChild.href.split("#");
+			    	let myLinkTime = urlArr[urlArr.length - 1].replace('audio@','');
+					thisElement.onclick = function() { playAudioFromAttachment(myLinkTime.split("-")[0]);} 
+					thisElement.style.cursor = 'pointer';
+					thisElement.setAttribute('data_audio_at', myLinkTime);
+					thisAnnotation.innerHtml ='';
+					thisAnnotation.parentNode.removeChild(thisAnnotation);
+					
+				}
 			}
 		}
 		init = true;
@@ -2361,112 +2364,71 @@ function playAudioFromAttachment(timeStartAt = 0.0) {
 
 function createAudioPlayer(){
 
-	//Audio speelt nog niet of heeft einde bereikt. Haal eerste MP3 op en speel die af
-	//Haal attachments op
+	// Audio speelt nog niet of heeft einde bereikt. Haal eerste MP3 op en speel
+	// die af
+	// Haal attachments op
 	var att = PDFViewerApplication.pdfAttachmentViewer.attachments;
 	if(att == null){
 		return;
 	}
 	const names = Object.keys(att).sort(function (a, b) {
 	      return a.toLowerCase().localeCompare(b.toLowerCase());
-	    });
-	    var attachmentsCount = names.length;
-
-	    //Loop door attachments
-	    for (let i = 0; i < attachmentsCount; i++) {
-	      const item = att[names[i]];
-	      //Alleen MP3 bestanden accepteren (zo genereert Stempol ze ook. Evt uitbreiden met andere extenties)
-	      if(att[names[i]].filename.endsWith(".mp3")){
-	    	  //Maak er een blob van (binair bestand)
-		      var blob = new Blob([item.content],{type: "audio/mpeg"});
-		      //Maak een URL aan, want dat wil een Audio object graag zien
-		      const itemurl = URL.createObjectURL(blob);
-		      //Laad de audio in
-		      //Variabele is globaal, zodat we ook kunnen stoppen en zo
-		      audio = new Audio(itemurl);
-		      
-		      const spans = getSpansWithDataId();
-		      //Als de tijd van afspelen verandert, dan willen we corresponderende annotation markeren
-		      audio.ontimeupdate = function(){ 	
-//		    	  //Haal alle elementen uit de annotationLayer in de HTML op
-//		    	  var ancestor = document.getElementById('annotationLayer'),
-//		    	  descendents = ancestor.getElementsByTagName('data_audio_at');
-//		    	  
-		    	  
-		    	  //1 keer zetten, we willen niet dat halverwege deze functie de tijd wijzigt en de boel in de soep loopt
-		    	  var audioCurrentTime = audio.currentTime
-		    	  
-		    	  var thisSpan;
-		    	  //Loop alle elementen in annotationLayer
-			      for (let i = 0; i < spans.length; ++i) {
-			    	  thisSpan = spans[i];
-			    	  var spanTimerange = thisSpan.getAttribute('data_audio_at').split("-");
-			    	  if(audioCurrentTime > spanTimerange[0] && audioCurrentTime < spanTimerange[1]){
-
-				  		  if(thisSpan.style.backgroundColor !== "rgba(128, 128, 128, 0.5)") {
-				  			  thisSpan.style.textDecoration = "underline";
-				  			  thisSpan.style.fontStyle = "italic";
-				    		  thisSpan.style.backgroundColor = "rgba(128, 128, 128, 0.5)";
-				    		  thisSpan.scrollIntoView();
-				    	  }
-			    	  }else{
-			    		  thisSpan.style.textDecoration = null;
-			    		  thisSpan.style.backgroundColor = null;
+	    }
+	);
+	var attachmentsCount = names.length;
+	
+	// Loop door attachments
+	for (let i = 0; i < attachmentsCount; i++) {
+	  const item = att[names[i]];
+	  // Alleen MP3 bestanden accepteren (zo genereert Stempol ze ook. Evt
+		// uitbreiden met andere extenties)
+	  if(att[names[i]].filename.endsWith(".mp3")){
+		  // Maak er een blob van (binair bestand)
+	      var blob = new Blob([item.content],{type: "audio/mpeg"});
+	      // Maak een URL aan, want dat wil een Audio object graag zien
+	      const itemurl = URL.createObjectURL(blob);
+	      // Laad de audio in
+	      // Variabele is globaal, zodat we ook kunnen stoppen en zo
+	      audio = new Audio(itemurl);
+	      
+	      const spans = getSpansWithDataId();
+	      // Als de tijd van afspelen verandert, dan willen we
+			// corresponderende annotation markeren
+	      audio.ontimeupdate = function(){ 	
+	    	  // 1 keer zetten, we willen niet dat halverwege deze functie de
+				// tijd wijzigt en de boel in de soep loopt
+	    	  var audioCurrentTime = audio.currentTime
+	    	  var thisSpan;
+		      for (let i = 0; i < spans.length; ++i) {
+		    	  thisSpan = spans[i];
+		    	  var spanTimerange = thisSpan.getAttribute('data_audio_at').split("-");
+		    	  if(audioCurrentTime > spanTimerange[0] && audioCurrentTime < spanTimerange[1]){
+	
+			  		  if(thisSpan.style.backgroundColor !== "rgba(128, 128, 128, 0.5)") {
+			  			  thisSpan.style.textDecoration = "underline";
+			  			  thisSpan.style.fontStyle = "italic";
+			    		  thisSpan.style.backgroundColor = "rgba(128, 128, 128, 0.5)";
+			    		  thisSpan.scrollIntoView();
 			    	  }
-//			    	  //Het is een <section> met daarin een <a>, gevolgd door een <section> met een <a>
-//			    	  //We zijn alleen geintereseerd in de <a> elementen, dus we doen +2 (en slaan daarmee de sections over)
-//				  	  thisAnnotation = descendents[i];
-//				  	  nextAnnotation = descendents[i+1];
-//				  	  //Deze annotation moet dus een <a>  zijn, specifiek voor audio bestanden. Die herkennen we aan de URL waar "audio@ in zit"
-//				  	  if(thisAnnotation.tagName === 'A' && thisAnnotation.href.includes("audio@")){
-//				  		  //Haal het tijdstip van deze annotatie op
-//				  		  var urlArr = thisAnnotation.href.split("#");
-//				  	      var thisLinkTime = urlArr[urlArr.length - 1].replace('audio@','');
-//				  	      //Haal het tijdstip van de volgende <a> op, tenzij er geen volgende <a> is, dan is het volgende tijdstip 999999
-//				  	      var nextLinkTime;
-//				  	      if(nextAnnotation === undefined){
-//				  	    	  nextLinkTime = 999999;
-//				  	      }else{
-//				  	    	  urlArr = nextAnnotation.href.split("#");
-//				  	    	  nextLinkTime = urlArr[urlArr.length - 1].replace('audio@','');
-//				  	      }
-//				  	      //Markeer de annotation die relevant is en on-markeer (dat is bij deze een woord) de rest
-//				  		  if(audioCurrentTime >= thisLinkTime  && audioCurrentTime < nextLinkTime ){
-//				  			  if(thisAnnotation.style.backgroundColor !== "rgba(128, 128, 128, 0.5)") {
-//				  				  thisAnnotation.style.backgroundColor = "rgba(128, 128, 128, 0.5)";
-//				  				  thisAnnotation.scrollIntoView(); 
-//				  			  }
-//				  		  }else{
-//				  			thisAnnotation.style.backgroundColor = null;
-//				  		  }
-//				  	  }
-			      }
-			  }; 
-			  //Als de audio stopt willen we alle annotations on-markeren (wat nog steeds een woord is)
-			  audio.onpause = function(){ 	
-				  
-				  var thisSpan;
-		    	  //Loop alle elementen in annotationLayer
-			      for (let i = 0; i < spans.length; ++i) {
-			    	  thisSpan = spans[i];
-			    	  thisSpan.style.textDecoration = null;
+		    	  }else{
+		    		  thisSpan.style.textDecoration = null;
 		    		  thisSpan.style.backgroundColor = null;
-			      }
-//				  var ancestor = document.getElementById('annotationLayer'),
-//		    	  descendents = ancestor.getElementsByTagName('*');
-//				  
-//		    	  var i, thisAnnotation;
-//		    	  
-//		    	  //Loop alle <a> elementen en haal markup weg
-//		    	  for (i = 0; i < descendents.length; ++i) {
-//				  	  thisAnnotation = descendents[i];
-//				  	  if(thisAnnotation.tagName === 'A' && thisAnnotation.href.includes("audio@")){
-//				  		thisAnnotation.style.backgroundColor = null;
-//				  	  }
-//		    	  }
-		    	  
-			  };
-		      //We spelen het eerste audio bestand af. Zitten er meer dan 1 in, dan moeten we daar iets op verzinnen
+		    	  }
+		      }
+		  }; 
+		  // Als de audio stopt willen we alle annotations on-markeren (wat
+			// nog steeds een woord is)
+		  audio.onpause = function(){ 	
+			  var thisSpan;
+		      for (let i = 0; i < spans.length; ++i) {
+		    	  thisSpan = spans[i];
+		    	  thisSpan.style.textDecoration = null;
+	    		  thisSpan.style.backgroundColor = null;
+		      }
+	    	  
+		  };
+	      // We spelen het eerste audio bestand af. Zitten er meer dan 1 in,
+			// dan moeten we daar iets op verzinnen
 		      return;
 	      }
 	  }
@@ -2484,9 +2446,7 @@ function getSpansWithDataId() {
 			retval.push(thisElement); 
 		 }
 	 }
-	 
 	 return retval;
-	
 }
 
 function webViewerPrint() {
