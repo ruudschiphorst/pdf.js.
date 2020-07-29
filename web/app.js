@@ -2279,9 +2279,14 @@ function getAnnotationByPosition(x, width){
 	  let i, thisAnnotation;
 	  //Loop alle elementen in annotationLayer
 	  for (i = 0; i < descendents.length; ++i) {
+//		  console.log('ann');
 		  thisAnnotation = descendents[i];
-		  if(thisAnnotation.getBoundingClientRect().x === x &&
-				  Math.trunc(thisAnnotation.getBoundingClientRect().width)  === Math.trunc(width)){
+//		  console.log(thisAnnotation.getBoundingClientRect());
+//		  console.log('x: ' + Math.trunc(thisAnnotation.getBoundingClientRect().x) + '/ ' + Math.trunc(x));
+//		  console.log('w: ' + Math.trunc(thisAnnotation.getBoundingClientRect().width) + '/ ' + Math.trunc(width));
+		  //Kan een paar milli-pixels afwijken, dus trunc() ze eerst
+		  if(Math.trunc(thisAnnotation.getBoundingClientRect().x) == Math.trunc(x) &&
+				  Math.trunc(thisAnnotation.getBoundingClientRect().width) == Math.trunc(width)){
 			  return thisAnnotation;
 		  }
 		  
@@ -2292,6 +2297,7 @@ function getAnnotationByPosition(x, width){
 function playPause(){
 	
 	if(!init){
+//		console.log("doing");
 		//Verwijder alle annotations die onze audio@ gebruiken en zoek bijbehorende normale text op
 		//Pas bijbehorende normale text aan door een attribute te zetten en mouse cursor te veranderen
 		var thisElement;
@@ -2301,14 +2307,19 @@ function playPause(){
 		//Bekijk alle <span> objecten in de viewer
 		for (let i = 0; i < descendents.length; ++i) {
 			thisElement = descendents[i];
+//			console.log(thisElement);
+//			console.log(thisElement.getBoundingClientRect());
 			//Kijk of er een annotation over deze <span> ligt
 			var thisAnnotation = getAnnotationByPosition(thisElement.getBoundingClientRect().x, thisElement.getBoundingClientRect().width);
 			//Als er een annotation overheen ligt...
 			if(thisAnnotation != null){
+//				console.log('Ik ben bezig...');
+				
 				if(thisAnnotation.childElementCount > 0 &&
-						thisAnnotation.hasAttribute("href") &&
+						thisAnnotation.firstElementChild.hasAttribute("href") &&
 						thisAnnotation.firstElementChild.href.includes('audio@')){
-					
+//					console.log('ik kom er door... met annotation:');
+//					console.log(thisAnnotation);
 					var urlArr = thisAnnotation.firstElementChild.href.split("#");
 			    	let myLinkTime = urlArr[urlArr.length - 1].replace('audio@','');
 					thisElement.onclick = function() { playAudioFromAttachment(myLinkTime.split("-")[0]);} 
@@ -2408,7 +2419,8 @@ function createAudioPlayer(){
 			  			  thisSpan.style.textDecoration = "underline";
 			  			  thisSpan.style.fontStyle = "italic";
 			    		  thisSpan.style.backgroundColor = "rgba(128, 128, 128, 0.5)";
-			    		  thisSpan.scrollIntoView();
+			    		  //Nope, mega irritant. Achter ctrl + f3 gezet
+//			    		  thisSpan.scrollIntoView();
 			    	  }
 		    	  }else{
 		    		  thisSpan.style.textDecoration = null;
@@ -2432,6 +2444,20 @@ function createAudioPlayer(){
 		      return;
 	      }
 	  }
+}
+
+function gotoHighlightedSpan() {
+	let allSpans = getSpansWithDataId();
+	let thisElement;
+	
+	for (let i = 0; i < allSpans.length; ++i) {
+		thisElement = allSpans[i];
+		if(thisElement.style.backgroundColor === "rgba(128, 128, 128, 0.5)"){
+			thisElement.scrollIntoView();
+			return;
+		}
+	}
+	
 }
 
 function getSpansWithDataId() {
@@ -2662,76 +2688,6 @@ function webViewerWheel(evt) {
 }
 
 function webViewerClick(evt) {
-
-	//Begin eigen aanpassing
-	
-	//Ruud
-	
-	
-	//Als we in de audio jumpen door een click op een annotation, dan willen we niet nog een keer jumpen
-	//Als er toevallig een tijdstip in de text is geselecteerd. Deze vlag houdt bij of we al een keer geskipped hebben
-//	let firedPlayAudio = false;
-	
-	//Bepaal waar op geklikt is
-//	evt = evt || window.event;
-//	var target = evt.target || evt.srcElement;
-//
-//	//Bekijk de parent van de parent waar op geklikt is
-//	var grandparentClassname = target.parentNode.parentNode.className;
-//	
-//	//De parent van de parent van de annotations waar we in geinteresseerd zijn is de annotationLayer
-//	//Is het iets anders, dan doen wij niets
-//	if(grandparentClassname === "annotationLayer"){
-//		if(target.href.includes("audio@")){
-//			//De url van onze eigen annotations die audio doen verplaatsen zien er uit als "#audio@5.0", 
-//			//wat betekent "speel af op 5.0 seconden". Bepaal dat tijdstip door de url te analysere
-//			var urlArr = target.href.split("#");
-//			var timeToJumpTo = urlArr[urlArr.length - 1].replace('audio@','');
-//			playAudioFromAttachment(timeToJumpTo);
-//		}
-//	}
-	
-//	if(!firedPlayAudio){
-//		let s = window.getSelection();
-//		
-//		if(s.anchorNode != null){
-//		    let range = s.getRangeAt(0);
-//		    let node = s.anchorNode;
-//		    let endNode = s.extentNode;
-//		    let startOff = range.startOffset;
-//		    let endOff = range.endOffset;;
-//		    
-//		    while (range.startOffset !== 0) {                   // start of node
-//		        range.setStart(node, range.startOffset - 1)     // back up 1 char
-//		        if (range.toString().search(/\s/) === 0) {      // space character
-//		            range.setStart(node, range.startOffset + 1);// move forward 1 char
-//		            break;
-//		        }
-//		    }
-//		
-//		    while (range.endOffset < node.length) {         // end of node
-//		        range.setEnd(node, range.endOffset + 1)     // forward 1 char
-//		        if (range.toString().search(/\s/) !== -1) { // space character
-//		            range.setEnd(node, range.endOffset - 1);// back 1 char
-//		            break;
-//		        }
-//		    }    
-//		    
-//		    let str = range.toString().trim();
-//
-//		    range.setStart(node, startOff);
-//		    range.setEnd(endNode, endOff);
-//		
-//		    if(/(?:[01]\d|2[0123]):(?:[012345]\d):(?:[012345]\d)/.test(str)){
-//		    	let a = str.split(':'); // split it at the colons
-//		    	let seconds = (+a[0]) * 60 * 60 + (+a[1]) * 60 + (+a[2]);
-//		    	firedPlayAudio = true;
-//		    	playAudioFromAttachment(seconds);
-//		    }
-//		}
-//	}
-//	firedPlayAudio = false;
-	//Einde eigen aanpassing
 	
   // Avoid triggering the fallback bar when the user clicks on the
   // toolbar or sidebar. 
@@ -2855,6 +2811,8 @@ function webViewerKeyDown(evt) {
           ensureViewerFocused = true;
         }
         break;
+      case 114:
+    	  gotoHighlightedSpan();
     }
   }
 
