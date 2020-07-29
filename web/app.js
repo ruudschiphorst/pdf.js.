@@ -133,6 +133,7 @@ const KNOWN_GENERATORS = [
 
 var audio = null;
 var init = false;
+var currentAudiofile = null;
 
 class DefaultExternalServices {
   constructor() {
@@ -2279,11 +2280,7 @@ function getAnnotationByPosition(x, width){
 	  let i, thisAnnotation;
 	  //Loop alle elementen in annotationLayer
 	  for (i = 0; i < descendents.length; ++i) {
-//		  console.log('ann');
 		  thisAnnotation = descendents[i];
-//		  console.log(thisAnnotation.getBoundingClientRect());
-//		  console.log('x: ' + Math.trunc(thisAnnotation.getBoundingClientRect().x) + '/ ' + Math.trunc(x));
-//		  console.log('w: ' + Math.trunc(thisAnnotation.getBoundingClientRect().width) + '/ ' + Math.trunc(width));
 		  //Kan een paar milli-pixels afwijken, dus trunc() ze eerst
 		  if(Math.trunc(thisAnnotation.getBoundingClientRect().x) == Math.trunc(x) &&
 				  Math.trunc(thisAnnotation.getBoundingClientRect().width) == Math.trunc(width)){
@@ -2297,7 +2294,6 @@ function getAnnotationByPosition(x, width){
 function playPause(){
 	
 	if(!init){
-//		console.log("doing");
 		//Verwijder alle annotations die onze audio@ gebruiken en zoek bijbehorende normale text op
 		//Pas bijbehorende normale text aan door een attribute te zetten en mouse cursor te veranderen
 		var thisElement;
@@ -2307,24 +2303,22 @@ function playPause(){
 		//Bekijk alle <span> objecten in de viewer
 		for (let i = 0; i < descendents.length; ++i) {
 			thisElement = descendents[i];
-//			console.log(thisElement);
-//			console.log(thisElement.getBoundingClientRect());
 			//Kijk of er een annotation over deze <span> ligt
 			var thisAnnotation = getAnnotationByPosition(thisElement.getBoundingClientRect().x, thisElement.getBoundingClientRect().width);
 			//Als er een annotation overheen ligt...
 			if(thisAnnotation != null){
-//				console.log('Ik ben bezig...');
-				
 				if(thisAnnotation.childElementCount > 0 &&
 						thisAnnotation.firstElementChild.hasAttribute("href") &&
 						thisAnnotation.firstElementChild.href.includes('audio@')){
-//					console.log('ik kom er door... met annotation:');
-//					console.log(thisAnnotation);
 					var urlArr = thisAnnotation.firstElementChild.href.split("#");
-			    	let myLinkTime = urlArr[urlArr.length - 1].replace('audio@','');
-					thisElement.onclick = function() { playAudioFromAttachment(myLinkTime.split("-")[0]);} 
+					let myFilename, myLinkTime;
+					var urlParams = urlArr[urlArr.length - 1].replace('audio@','').split("/");
+					myFilename = urlParams[urlParams.length -2];
+				    myLinkTime = urlParams[urlArr.length - 1];
+			
+					thisElement.onclick = function() { playAudioFromAttachment(myFilename, myLinkTime.split("-")[0]);} 
 					thisElement.style.cursor = 'pointer';
-					thisElement.setAttribute('data_audio_at', myLinkTime);
+					thisElement.setAttribute('data_audio_at', myFilename + "/" + myLinkTime);
 					thisAnnotation.innerHtml ='';
 					thisAnnotation.parentNode.removeChild(thisAnnotation);
 					
@@ -2336,47 +2330,56 @@ function playPause(){
 	if(audio && !audio.paused && !audio.ended){
 		audio.pause();
 	}else{
-		playAudioFromAttachment(null);
+		playAudioFromAttachment(null, null);
 	}
 }
 
-function playAudioFromAttachment(timeStartAt = 0.0) {
+function playAudioFromAttachment(filename, timeStartAt = 0.0) {
 	//Ruud
-	//Als audio bestaat, dan niet ophalen
-	if(audio){
-		//Dan jumpen naar tijdstip van argument, tenzij null, dan pauze
-		if(timeStartAt != null){
-			//Audio.duration = NaN als hij nog nooit heeft gespeeld
-			//Is dat het geval, zet dan de tijd maar gewoon op aangegeven tijdstip
-			if(isNaN(audio.duration) || timeStartAt < audio.duration){
-				audio.currentTime = timeStartAt;
+	//Er wordt gesprongen in de huidige file, dus niet opnieuw ophalen
+	if(filename === currentAudiofile){
+		//Als audio bestaat nog steeds, dus niet opnieuw ophalen
+		if(audio){
+			//Dan jumpen naar tijdstip van argument, tenzij null, dan pauze togglen
+			if(timeStartAt != null){
+				//Audio.duration = NaN als hij nog nooit heeft gespeeld
+				//Is dat het geval, zet dan de tijd maar gewoon op aangegeven tijdstip
+				if(isNaN(audio.duration) || timeStartAt < audio.duration){
+					audio.currentTime = timeStartAt;
+				}else{
+					//Duration < aangegeven tijd. Zet hem daarom maar op onderstaande waarde (i.e. 11,5 dag)
+					//Op deze manier skippen we naar het einde 
+					audio.currentTime = 999999;
+				}
+				if(audio.paused){
+					audio.play();
+				}
+				return;
 			}else{
-				//Duration < aangegeven tijd. Zet hem daarom maar op onderstaande waarde (i.e. 11,5 dag)
-				//Op deze manier skippen we naar het einde 
-				audio.currentTime = 999999;
+				if(!audio.paused){
+					audio.pause();
+				}else{
+					audio.play();
+				}
+				return;
 			}
-			if(audio.paused){
-				audio.play();
-			}
-			return;
 		}else{
-			if(!audio.paused){
-				audio.pause();
-			}else{
-				audio.play();
-			}
-			return;
+			//Huidige file wordt in gesprongen, maar audio bestaat niet meer. Maak audio opnieuw aan en speel af
+			createAudioPlayer(filename);
+			playAudioFromAttachment(filename, timeStartAt || 0.0);
 		}
 	}else{
-		createAudioPlayer();
-		playAudioFromAttachment(timeStartAt || 0.0);
+		//We openen een ander bestand. Stop de huidige audio, haal de nieuwe op en speel af
+		audio.pause();
+		createAudioPlayer(filename);
+		playAudioFromAttachment(filename, timeStartAt || 0.0);
 	}
 }
 
-function createAudioPlayer(){
+function createAudioPlayer(filename){
 
-	// Audio speelt nog niet of heeft einde bereikt. Haal eerste MP3 op en speel
-	// die af
+	// Audio speelt nog niet of heeft einde bereikt. Haal MP3 op en speel die af
+	
 	// Haal attachments op
 	var att = PDFViewerApplication.pdfAttachmentViewer.attachments;
 	if(att == null){
@@ -2387,63 +2390,72 @@ function createAudioPlayer(){
 	    }
 	);
 	var attachmentsCount = names.length;
+	var fetchedAttachment;
 	
 	// Loop door attachments
 	for (let i = 0; i < attachmentsCount; i++) {
-	  const item = att[names[i]];
-	  // Alleen MP3 bestanden accepteren (zo genereert Stempol ze ook. Evt
-		// uitbreiden met andere extenties)
-	  if(att[names[i]].filename.endsWith(".mp3")){
-		  // Maak er een blob van (binair bestand)
-	      var blob = new Blob([item.content],{type: "audio/mpeg"});
-	      // Maak een URL aan, want dat wil een Audio object graag zien
-	      const itemurl = URL.createObjectURL(blob);
-	      // Laad de audio in
-	      // Variabele is globaal, zodat we ook kunnen stoppen en zo
-	      audio = new Audio(itemurl);
-	      
-	      const spans = getSpansWithDataId();
-	      // Als de tijd van afspelen verandert, dan willen we
-			// corresponderende annotation markeren
-	      audio.ontimeupdate = function(){ 	
-	    	  // 1 keer zetten, we willen niet dat halverwege deze functie de
-				// tijd wijzigt en de boel in de soep loopt
-	    	  var audioCurrentTime = audio.currentTime
-	    	  var thisSpan;
-		      for (let i = 0; i < spans.length; ++i) {
-		    	  thisSpan = spans[i];
-		    	  var spanTimerange = thisSpan.getAttribute('data_audio_at').split("-");
-		    	  if(audioCurrentTime > spanTimerange[0] && audioCurrentTime < spanTimerange[1]){
+		const item = att[names[i]];
+		//Geen filename komt alleen bij play/pause knop. Is dat het geval, dan eerste attachment afspelen
+		if(filename == null){
+			// Alleen MP3 bestanden accepteren (zo genereert Stempol ze ook. Evt
+			// uitbreiden met andere extenties)
+			if(item.filename.endsWith(".mp3")){
+				// We spelen het eerste audio bestand af als er geen naam wordt meegegeven
+				// dan moeten we daar iets op verzinnen
+				fetchedAttachment = item;
+				currentAudiofile = item.filename;
+				break;
+			}
+		}else{
+			if(item.filename.toUpperCase() === filename.toUpperCase()) {
+				fetchedAttachment = item;
+				currentAudiofile = item.filename;
+				break;
+			}
+		}
+	}
 	
-			  		  if(thisSpan.style.backgroundColor !== "rgba(128, 128, 128, 0.5)") {
-			  			  thisSpan.style.textDecoration = "underline";
-			  			  thisSpan.style.fontStyle = "italic";
-			    		  thisSpan.style.backgroundColor = "rgba(128, 128, 128, 0.5)";
-			    		  //Nope, mega irritant. Achter ctrl + f3 gezet
-//			    		  thisSpan.scrollIntoView();
-			    	  }
-		    	  }else{
-		    		  thisSpan.style.textDecoration = null;
-		    		  thisSpan.style.backgroundColor = null;
+	 // Maak er een blob van (binair bestand)
+    var blob = new Blob([fetchedAttachment.content],{type: "audio/mpeg"});
+    // Maak een URL aan, want dat wil een Audio object graag zien
+    const itemurl = URL.createObjectURL(blob);
+    // Laad de audio in
+    // Variabele is globaal, zodat we ook kunnen stoppen en zo
+    audio = new Audio(itemurl);
+    
+    const spans = getSpansWithDataId();
+    // Als de tijd van afspelen verandert, dan willen we corresponderende element markeren
+    audio.ontimeupdate = function(){ 	
+  	  // 1 keer zetten, we willen niet dat halverwege deze functie de tijd wijzigt en de boel in de soep loopt
+  	  var audioCurrentTime = audio.currentTime
+  	  var thisSpan;
+	      for (let i = 0; i < spans.length; ++i) {
+	    	  thisSpan = spans[i];
+	    	  var spanTimerange  = thisSpan.getAttribute('data_audio_at').split("/")[1].split("-");
+	    	  if(audioCurrentTime > spanTimerange[0] && audioCurrentTime < spanTimerange[1] && thisSpan.getAttribute('data_audio_at').includes(currentAudiofile)){
+
+		  		  if(thisSpan.style.backgroundColor !== "rgba(128, 128, 128, 0.5)") {
+		  			  thisSpan.style.textDecoration = "underline";
+		  			  thisSpan.style.fontStyle = "italic";
+		    		  thisSpan.style.backgroundColor = "rgba(128, 128, 128, 0.5)";
 		    	  }
-		      }
-		  }; 
-		  // Als de audio stopt willen we alle annotations on-markeren (wat
-			// nog steeds een woord is)
-		  audio.onpause = function(){ 	
-			  var thisSpan;
-		      for (let i = 0; i < spans.length; ++i) {
-		    	  thisSpan = spans[i];
-		    	  thisSpan.style.textDecoration = null;
+	    	  }else{
+	    		  thisSpan.style.textDecoration = null;
 	    		  thisSpan.style.backgroundColor = null;
-		      }
-	    	  
-		  };
-	      // We spelen het eerste audio bestand af. Zitten er meer dan 1 in,
-			// dan moeten we daar iets op verzinnen
-		      return;
+	    	  }
 	      }
-	  }
+	  }; 
+	  // Als de audio stopt willen we alle annotations on-markeren (wat
+	  // nog steeds een woord is)
+	  audio.onpause = function(){ 	
+		  var thisSpan;
+	      for (let i = 0; i < spans.length; ++i) {
+	    	  thisSpan = spans[i];
+	    	  thisSpan.style.textDecoration = null;
+	    	  thisSpan.style.backgroundColor = null;
+	      }
+  	  
+	  };
 }
 
 function gotoHighlightedSpan() {
