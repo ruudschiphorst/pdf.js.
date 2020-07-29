@@ -2312,7 +2312,8 @@ function initAudioFunctionality() {
 	}
 	init = true;
 	
-	if(!pdfHasAudioAttachment()){
+	var noOfAtts = getNoOfAudioAttachments();
+	if(noOfAtts < 1){
 		document.getElementById("attachmentAudio").setAttribute("hidden", "true");
 		return;
 	}
@@ -2395,10 +2396,13 @@ function playAudioFromAttachment(filename, timeStartAt = 0.0) {
 	}
 }
 
-function pdfHasAudioAttachment(){
+function getNoOfAudioAttachments(){
+	
+	var returnCount=0;
+	
 	var att = PDFViewerApplication.pdfAttachmentViewer.attachments;
 	if(att == null){
-		return;
+		return returnCount;
 	}
 	const names = Object.keys(att).sort(function (a, b) {
 	      return a.toLowerCase().localeCompare(b.toLowerCase());
@@ -2411,10 +2415,11 @@ function pdfHasAudioAttachment(){
 	for (let i = 0; i < attachmentsCount; i++) {
 		const item = att[names[i]];
 		if(item.filename.endsWith(".mp3") || item.filename.endsWith(".wav") || item.filename.endsWith(".ogg")){
-			return true;
+			returnCount++;
 		}
 	}
-	return false;
+
+	return returnCount;
 }
 
 function createAudioPlayer(filename){
