@@ -2298,7 +2298,11 @@ function playPause(){
 	if(audio && !audio.paused && !audio.ended){
 		audio.pause();
 	}else{
-		playAudioFromAttachment(null, null);
+		if(audio){
+			audio.play();
+		}else{
+			playAudioFromAttachment(null, null);
+		}
 	}
 }
 
@@ -2406,7 +2410,7 @@ function pdfHasAudioAttachment(){
 	// Loop door attachments
 	for (let i = 0; i < attachmentsCount; i++) {
 		const item = att[names[i]];
-		if(item.filename.endsWith(".mp3")){
+		if(item.filename.endsWith(".mp3") || item.filename.endsWith(".wav") || item.filename.endsWith(".ogg")){
 			return true;
 		}
 	}
@@ -2436,7 +2440,7 @@ function createAudioPlayer(filename){
 		if(filename == null){
 			// Alleen MP3 bestanden accepteren (zo genereert Stempol ze ook. Evt
 			// uitbreiden met andere extenties)
-			if(item.filename.endsWith(".mp3")){
+			if(item.filename.endsWith(".mp3") || item.filename.endsWith(".wav") || item.filename.endsWith(".ogg")){
 				// We spelen het eerste audio bestand af als er geen naam wordt meegegeven
 				// dan moeten we daar iets op verzinnen
 				fetchedAttachment = item;
