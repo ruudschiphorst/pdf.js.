@@ -1558,6 +1558,7 @@ const PDFViewerApplication = {
       // Setting the default one.
       this.pdfViewer.currentScaleValue = DEFAULT_SCALE_VALUE;
     }
+    
   },
 
   cleanup() {
@@ -1701,6 +1702,7 @@ const PDFViewerApplication = {
     eventBus._on("updatefindmatchescount", webViewerUpdateFindMatchesCount);
     eventBus._on("updatefindcontrolstate", webViewerUpdateFindControlState);
     eventBus._on("playpause", playPause); //RUUD
+    eventBus._on("textlayerrendered", initAudioFunctionality);
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
       eventBus._on("fileinputchange", webViewerFileInputChange);
       eventBus._on("openfile", webViewerOpenFile);
@@ -2216,7 +2218,7 @@ function webViewerHashchange(evt) {
   const hash = evt.hash;
   if (!hash) {
     return;
-  }
+  }//RUUD
   if (!PDFViewerApplication.isInitialViewSet) {
     PDFViewerApplication.initialBookmark = hash;
   } else if (!PDFViewerApplication.pdfHistory.popStateInProgress) {
@@ -2293,40 +2295,6 @@ function getAnnotationByPosition(x, width){
 
 function playPause(){
 	
-	if(!init){
-		//Verwijder alle annotations die onze audio@ gebruiken en zoek bijbehorende normale text op
-		//Pas bijbehorende normale text aan door een attribute te zetten en mouse cursor te veranderen
-		var thisElement;
-		var ancestor = document.getElementById('viewer'),
-		descendents = ancestor.getElementsByTagName('SPAN');
-		
-		//Bekijk alle <span> objecten in de viewer
-		for (let i = 0; i < descendents.length; ++i) {
-			thisElement = descendents[i];
-			//Kijk of er een annotation over deze <span> ligt
-			var thisAnnotation = getAnnotationByPosition(thisElement.getBoundingClientRect().x, thisElement.getBoundingClientRect().width);
-			//Als er een annotation overheen ligt...
-			if(thisAnnotation != null){
-				if(thisAnnotation.childElementCount > 0 &&
-						thisAnnotation.firstElementChild.hasAttribute("href") &&
-						thisAnnotation.firstElementChild.href.includes('audio@')){
-					var urlArr = thisAnnotation.firstElementChild.href.split("#");
-					let myFilename, myLinkTime;
-					var urlParams = urlArr[urlArr.length - 1].replace('audio@','').split("/");
-					myFilename = urlParams[urlParams.length -2];
-				    myLinkTime = urlParams[urlArr.length - 1];
-			
-					thisElement.onclick = function() { playAudioFromAttachment(myFilename, myLinkTime.split("-")[0]);} 
-					thisElement.style.cursor = 'pointer';
-					thisElement.setAttribute('data_audio_at', myFilename + "/" + myLinkTime);
-					thisAnnotation.innerHtml ='';
-					thisAnnotation.parentNode.removeChild(thisAnnotation);
-					
-				}
-			}
-		}
-		init = true;
-	}
 	if(audio && !audio.paused && !audio.ended){
 		audio.pause();
 	}else{
@@ -2334,10 +2302,55 @@ function playPause(){
 	}
 }
 
+function initAudioFunctionality() {
+	if(init) {
+		return;
+	}
+	init = true;
+	
+	if(!pdfHasAudioAttachment()){
+		document.getElementById("attachmentAudio").setAttribute("hidden", "true");
+		return;
+	}
+	
+	//Verwijder alle annotations die onze audio@ gebruiken en zoek bijbehorende normale text op
+	//Pas bijbehorende normale text aan door een attribute te zetten en mouse cursor te veranderen
+	var thisElement;
+	var ancestor = document.getElementById('viewer'),
+	descendents = ancestor.getElementsByTagName('SPAN');
+	
+	//Bekijk alle <span> objecten in de viewer
+	for (let i = 0; i < descendents.length; ++i) {
+		thisElement = descendents[i];
+		//Kijk of er een annotation over deze <span> ligt
+		var thisAnnotation = getAnnotationByPosition(thisElement.getBoundingClientRect().x, thisElement.getBoundingClientRect().width);
+		//Als er een annotation overheen ligt...
+		if(thisAnnotation != null){
+			if(thisAnnotation.childElementCount > 0 &&
+					thisAnnotation.firstElementChild.hasAttribute("href") &&
+					thisAnnotation.firstElementChild.href.includes('audio@')){
+				var urlArr = thisAnnotation.firstElementChild.href.split("#");
+				let myFilename, myLinkTime;
+				var urlParams = urlArr[urlArr.length - 1].replace('audio@','').split("/");
+				myFilename = urlParams[urlParams.length -2];
+			    myLinkTime = urlParams[urlArr.length - 1];
+		
+				thisElement.onclick = function() { playAudioFromAttachment(myFilename, myLinkTime.split("-")[0]);} 
+				thisElement.style.cursor = 'pointer';
+				thisElement.setAttribute('data_audio_at', myFilename + "/" + myLinkTime);
+				thisAnnotation.innerHtml ='';
+				thisAnnotation.parentNode.removeChild(thisAnnotation);
+				
+			}
+		}
+	}
+	
+}
+
 function playAudioFromAttachment(filename, timeStartAt = 0.0) {
 	//Ruud
 	//Er wordt gesprongen in de huidige file, dus niet opnieuw ophalen
-	if(filename === currentAudiofile){
+	if(currentAudiofile != null && filename === currentAudiofile ){
 		//Als audio bestaat nog steeds, dus niet opnieuw ophalen
 		if(audio){
 			//Dan jumpen naar tijdstip van argument, tenzij null, dan pauze togglen
@@ -2366,14 +2379,38 @@ function playAudioFromAttachment(filename, timeStartAt = 0.0) {
 		}else{
 			//Huidige file wordt in gesprongen, maar audio bestaat niet meer. Maak audio opnieuw aan en speel af
 			createAudioPlayer(filename);
-			playAudioFromAttachment(filename, timeStartAt || 0.0);
+			playAudioFromAttachment(currentAudiofile, timeStartAt || 0.0);
 		}
 	}else{
 		//We openen een ander bestand. Stop de huidige audio, haal de nieuwe op en speel af
-		audio.pause();
+		if(audio && !audio.paused){
+			audio.pause();
+		}
 		createAudioPlayer(filename);
-		playAudioFromAttachment(filename, timeStartAt || 0.0);
+		playAudioFromAttachment(currentAudiofile, timeStartAt || 0.0);
 	}
+}
+
+function pdfHasAudioAttachment(){
+	var att = PDFViewerApplication.pdfAttachmentViewer.attachments;
+	if(att == null){
+		return;
+	}
+	const names = Object.keys(att).sort(function (a, b) {
+	      return a.toLowerCase().localeCompare(b.toLowerCase());
+	    }
+	);
+	var attachmentsCount = names.length;
+	var fetchedAttachment;
+	
+	// Loop door attachments
+	for (let i = 0; i < attachmentsCount; i++) {
+		const item = att[names[i]];
+		if(item.filename.endsWith(".mp3")){
+			return true;
+		}
+	}
+	return false;
 }
 
 function createAudioPlayer(filename){
@@ -2424,9 +2461,11 @@ function createAudioPlayer(filename){
     audio = new Audio(itemurl);
     
     const spans = getSpansWithDataId();
-    // Als de tijd van afspelen verandert, dan willen we corresponderende element markeren
+    // Als de tijd van afspelen verandert, dan willen we
+		// corresponderende annotation markeren
     audio.ontimeupdate = function(){ 	
-  	  // 1 keer zetten, we willen niet dat halverwege deze functie de tijd wijzigt en de boel in de soep loopt
+  	  // 1 keer zetten, we willen niet dat halverwege deze functie de
+			// tijd wijzigt en de boel in de soep loopt
   	  var audioCurrentTime = audio.currentTime
   	  var thisSpan;
 	      for (let i = 0; i < spans.length; ++i) {
@@ -2438,6 +2477,8 @@ function createAudioPlayer(filename){
 		  			  thisSpan.style.textDecoration = "underline";
 		  			  thisSpan.style.fontStyle = "italic";
 		    		  thisSpan.style.backgroundColor = "rgba(128, 128, 128, 0.5)";
+		    		  //Nope, mega irritant. Achter ctrl + f3 gezet
+//		    		  thisSpan.scrollIntoView();
 		    	  }
 	    	  }else{
 	    		  thisSpan.style.textDecoration = null;
@@ -2446,7 +2487,7 @@ function createAudioPlayer(filename){
 	      }
 	  }; 
 	  // Als de audio stopt willen we alle annotations on-markeren (wat
-	  // nog steeds een woord is)
+		// nog steeds een woord is)
 	  audio.onpause = function(){ 	
 		  var thisSpan;
 	      for (let i = 0; i < spans.length; ++i) {
