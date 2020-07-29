@@ -132,7 +132,6 @@ const KNOWN_GENERATORS = [
 ];
 
 var audio = null;
-var init = false;
 var currentAudiofile = null;
 
 class DefaultExternalServices {
@@ -2306,15 +2305,87 @@ function playPause(){
 	}
 }
 
-function initAudioFunctionality() {
-	if(init) {
-		return;
+function checkLinkAnnotationsForFilenameErrors() {
+	if(getNoOfAudioAttachments() > 1){
+		
+		let ancestor = document.getElementById('annotationLayer'),
+		  descendents = ancestor.getElementsByTagName('A');
+
+		  let i, thisAnnotation;
+		  //Loop alle elementen in annotationLayer
+		  for (i = 0; i < descendents.length; ++i) {
+			  thisAnnotation = descendents[i];
+			  if(thisAnnotation.href.includes('audio@')){
+				  let urlArr = thisAnnotation.href.split("#");
+				  let urlStr = urlArr[urlArr.length - 1].replace('audio@','');
+				  //Geen / betekent geen file
+				  if(!urlStr.includes("/")){
+					  return false;
+				  }else{
+					  //Wel een /. Kijk of het een "truthy" value heeft. Blegh.
+					  //https://stackoverflow.com/a/5515349 voor "truthy" 
+					  var myFilename = urlStr.split("/")[0];
+					  if(!myFilename){
+						  return false;
+					  }	
+				  }
+			  }
+		  }
+//		
+//		
+//		var thisElement;
+//		var ancestor = document.getElementById('viewer'),
+//		descendents = ancestor.getElementsByTagName('SPAN');
+//		
+//		//Bekijk alle <span> objecten in de viewer
+//		for (let i = 0; i < descendents.length; ++i) {
+//			thisElement = descendents[i];
+//			//Kijk of er een annotation over deze <span> ligt
+//			var thisAnnotation = getAnnotationByPosition(thisElement.getBoundingClientRect().x, thisElement.getBoundingClientRect().width);
+//			//Als er een annotation overheen ligt...
+//			if(thisAnnotation != null){
+//				if(thisAnnotation.childElementCount > 0 &&
+//						thisAnnotation.firstElementChild.hasAttribute("href") &&
+//						thisAnnotation.firstElementChild.href.includes('audio@')){
+//					
+//					let urlArr = thisAnnotation.firstElementChild.href.split("#");
+//					let urlStr = urlArr[urlArr.length - 1].replace('audio@','');
+//					//Geen / betekent geen file
+//					if(!urlStr.includes("/")){
+//						return false;
+//					}else{
+//						//Wel een /. Kijk of het een "truthy" value heeft. Blegh.
+//						//https://stackoverflow.com/a/5515349 voor "truthy" 
+//						var myFilename = urlStr.split("/")[0];
+//						if(!myFilename){
+//							return false;
+//						}
+//					}
+//				}
+//			}
+//		}
 	}
-	init = true;
+	return true;
+}
+
+function hideAudioButton(){
+	document.getElementById("attachmentAudio").setAttribute("hidden", "true");
+}
+
+function initAudioFunctionality() {
 	
 	var noOfAtts = getNoOfAudioAttachments();
 	if(noOfAtts < 1){
-		document.getElementById("attachmentAudio").setAttribute("hidden", "true");
+		hideAudioButton();
+		return;
+	}
+	
+	if(!checkLinkAnnotationsForFilenameErrors()){
+		console.error("Cannot initiate Audio functionality: There is more than one audio attachment in this file and there " +
+				"are file indicators missing in at least one LinkAnnotation. If using more than one audio attachment, LinkAnnotations starting with 'audio@' MUST use the following syntax:" +
+				"audio@<filename>/<timeStart>[-<timeEnd>], per example: 'audio@myfile.mp3/0.0' which starts at 0.0 seconds or audio@myfile.mp3/1.0-5.0, which starts at 1.0 seconds and " +
+				"will highlight the text while the audio.currentTime between 1.0 and 5.0 seconds. When using just one audio attachment, the filename may be omitted: 'audio@5.0' or 'audio@1.4-2.3'.");
+		hideAudioButton();
 		return;
 	}
 	
@@ -2334,15 +2405,42 @@ function initAudioFunctionality() {
 			if(thisAnnotation.childElementCount > 0 &&
 					thisAnnotation.firstElementChild.hasAttribute("href") &&
 					thisAnnotation.firstElementChild.href.includes('audio@')){
-				var urlArr = thisAnnotation.firstElementChild.href.split("#");
-				let myFilename, myLinkTime;
-				var urlParams = urlArr[urlArr.length - 1].replace('audio@','').split("/");
-				myFilename = urlParams[urlParams.length -2];
-			    myLinkTime = urlParams[urlArr.length - 1];
-		
-				thisElement.onclick = function() { playAudioFromAttachment(myFilename, myLinkTime.split("-")[0]);} 
+				let urlArr = thisAnnotation.firstElementChild.href.split("#");
+				let myFilename, myLinkStartTime, myLinkEndTime;
+				let urlStr = urlArr[urlArr.length - 1].replace('audio@','');
+				//mijnmp3.mp3/0.0-5.0 
+				//OF
+				//mijnmp3.mp3/0.0
+				if(urlStr.includes("/")){
+					myFilename = urlStr.split("/")[0];
+					//mijnmp3.mp3/0.0-5.0 
+					if(urlStr.split("/")[1].includes("-")){
+						myLinkStartTime = urlStr.split("/")[1].split("-")[0];
+						myLinkEndTime = urlStr.split("/")[1].split("-")[1];
+						//mijnmp3.mp3/0.0
+					}else{
+						myLinkStartTime = urlStr.split("/")[1];
+						myLinkEndTime = null;
+					}
+				//0.0-5.0 
+				//OF
+				//0.0
+				}else{
+					myFilename = getFirstAudioAttachment().filename;
+					if(urlStr.includes("-")){
+						myLinkStartTime = urlStr.split("-")[0];
+						myLinkStartEndTime = urlStr.split("-")[1];
+					}else{
+						myLinkStartTime = urlStr;
+						myLinkEndTime = null;
+					}
+				}
+				
+				thisElement.onclick = function() { playAudioFromAttachment(myFilename, myLinkStartTime);} 
 				thisElement.style.cursor = 'pointer';
-				thisElement.setAttribute('data_audio_at', myFilename + "/" + myLinkTime);
+				thisElement.setAttribute('data_audio_file', myFilename);
+				thisElement.setAttribute('data_audio_start', myLinkStartTime);
+				thisElement.setAttribute('data_audio_end', myLinkEndTime);
 				thisAnnotation.innerHtml ='';
 				thisAnnotation.parentNode.removeChild(thisAnnotation);
 				
@@ -2422,6 +2520,31 @@ function getNoOfAudioAttachments(){
 	return returnCount;
 }
 
+function getFirstAudioAttachment(){
+	
+	
+	var att = PDFViewerApplication.pdfAttachmentViewer.attachments;
+	if(att == null){
+		return null;
+	}
+	const names = Object.keys(att).sort(function (a, b) {
+	      return a.toLowerCase().localeCompare(b.toLowerCase());
+	    }
+	);
+	var attachmentsCount = names.length;
+	var fetchedAttachment;
+	
+	// Loop door attachments
+	for (let i = 0; i < attachmentsCount; i++) {
+		const item = att[names[i]];
+		if(item.filename.endsWith(".mp3") || item.filename.endsWith(".wav") || item.filename.endsWith(".ogg")){
+			return item;
+		}
+	}
+
+	return null;
+}
+
 function createAudioPlayer(filename){
 
 	// Audio speelt nog niet of heeft einde bereikt. Haal MP3 op en speel die af
@@ -2438,21 +2561,13 @@ function createAudioPlayer(filename){
 	var attachmentsCount = names.length;
 	var fetchedAttachment;
 	
-	// Loop door attachments
-	for (let i = 0; i < attachmentsCount; i++) {
-		const item = att[names[i]];
-		//Geen filename komt alleen bij play/pause knop. Is dat het geval, dan eerste attachment afspelen
-		if(filename == null){
-			// Alleen MP3 bestanden accepteren (zo genereert Stempol ze ook. Evt
-			// uitbreiden met andere extenties)
-			if(item.filename.endsWith(".mp3") || item.filename.endsWith(".wav") || item.filename.endsWith(".ogg")){
-				// We spelen het eerste audio bestand af als er geen naam wordt meegegeven
-				// dan moeten we daar iets op verzinnen
-				fetchedAttachment = item;
-				currentAudiofile = item.filename;
-				break;
-			}
-		}else{
+	if(filename == null){
+		fetchedAttachment = getFirstAudioAttachment();
+		currentAudiofile = fetchedAttachment.filename;
+	}else{
+		// Loop door attachments
+		for (let i = 0; i < attachmentsCount; i++) {
+			const item = att[names[i]];
 			if(item.filename.toUpperCase() === filename.toUpperCase()) {
 				fetchedAttachment = item;
 				currentAudiofile = item.filename;
@@ -2479,15 +2594,17 @@ function createAudioPlayer(filename){
   	  var thisSpan;
 	      for (let i = 0; i < spans.length; ++i) {
 	    	  thisSpan = spans[i];
-	    	  var spanTimerange  = thisSpan.getAttribute('data_audio_at').split("/")[1].split("-");
-	    	  if(audioCurrentTime > spanTimerange[0] && audioCurrentTime < spanTimerange[1] && thisSpan.getAttribute('data_audio_at').includes(currentAudiofile)){
+	    	  var myFile, myStart, myEnd;
+	    	  myFile = thisSpan.getAttribute('data_audio_file');
+	    	  myStart = thisSpan.getAttribute('data_audio_start');
+	    	  myEnd = thisSpan.getAttribute('data_audio_end');
+	    	  
+	    	  if(audioCurrentTime > myStart && audioCurrentTime < myEnd){
 
 		  		  if(thisSpan.style.backgroundColor !== "rgba(128, 128, 128, 0.5)") {
 		  			  thisSpan.style.textDecoration = "underline";
 		  			  thisSpan.style.fontStyle = "italic";
 		    		  thisSpan.style.backgroundColor = "rgba(128, 128, 128, 0.5)";
-		    		  //Nope, mega irritant. Achter ctrl + f3 gezet
-//		    		  thisSpan.scrollIntoView();
 		    	  }
 	    	  }else{
 	    		  thisSpan.style.textDecoration = null;
@@ -2530,7 +2647,7 @@ function getSpansWithDataId() {
 	  descendents = ancestor.getElementsByTagName('SPAN');
 	 for (let i = 0; i < descendents.length; ++i) {
 		 var thisElement = descendents[i];
-		 if(thisElement.hasAttribute("data_audio_at")){
+		 if(thisElement.hasAttribute("data_audio_start")){
 			retval.push(thisElement); 
 		 }
 	 }
