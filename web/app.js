@@ -132,6 +132,7 @@ const KNOWN_GENERATORS = [
 ];
 
 var audio = null;
+var init = false;
 var currentAudiofile = null;
 
 class DefaultExternalServices {
@@ -2274,96 +2275,149 @@ function webViewerPresentationMode() {
   PDFViewerApplication.requestPresentationMode();
 }
 
-function getAnnotationByPosition(x, width){
+//Check if rectangle a contains rectangle b
+//Each object (a and b) should have 2 properties to represent the
+//top-left corner (top, left) and 2 for the bottom-right corner (bottom, right).
+function contains(a, b) {
+	return !(
+		b.top < a.top ||
+		b.left < a.left ||
+		b.bottom > a.bottom ||
+		b.right > a.right
+	);
+}
+
+//Check if rectangle a overlaps rectangle b
+//Each object (a and b) should have 2 properties to represent the
+//top-left corner (top, left) and 2 for the bottom-right corner (bottom, right).
+function overlaps(a, b) {
+	// no horizontal overlap
+	if (a.top >= b.bottom || b.top >= a.bottom) return false;
+
+	// no vertical overlap
+	if (a.left >= b.right || b.left >= a.right) return false;
+
+	return true;
+}
+
+//Check if rectangle a touches rectangle b
+//Each object (a and b) should have 2 properties to represent the
+//top-left corner (top, left) and 2 for the bottom-right corner (bottom, right).
+function touches(a, b) {
+	// has horizontal gap
+	if (a.top > b.bottom || b.top > a.bottom) return false;
+
+	// has vertical gap
+	if (a.left > b.right || b.left > a.right) return false;
+
+	return true;
+}
+
+function intersectRect(rect1, rect2) {
+	
+	return !(rect1.right < rect2.left || 
+            rect1.left > rect2.right || 
+            rect1.bottom < rect2.top || 
+            rect1.top > rect2.bottom);
+	
+	
+//	var check2 = intersectRuuct(rect1, rect2);
+//	if(check2){
+//		return true;
+//	}
+//	
+//	return false;
+}
+
+
+//function intersectRect(r1, r2){
+//	
+//	if(Math.trunc(r1.x) === Math.trunc(r2.x)){
+//		if(r1.y > r2.y && r1.y < r2.bottom){
+//			return true;
+//		}
+//		if(r2.y > r1.y && r2.y < r1.bottom){
+//			return true;
+//		}
+//	}
+//	return false;
+//	
+//}
+
+
+function getAnnotationByPosition(rect){
 	let ancestor = document.getElementById('annotationLayer'),
 	  descendents = ancestor.getElementsByTagName('SECTION');
-
+	
+		var candidates = [];
+	
 	  let i, thisAnnotation;
 	  //Loop alle elementen in annotationLayer
 	  for (i = 0; i < descendents.length; ++i) {
 		  thisAnnotation = descendents[i];
-		  //Kan een paar milli-pixels afwijken, dus trunc() ze eerst
-		  if(Math.trunc(thisAnnotation.getBoundingClientRect().x) == Math.trunc(x) &&
-				  Math.trunc(thisAnnotation.getBoundingClientRect().width) == Math.trunc(width)){
-			  return thisAnnotation;
+		  if(intersectRect(rect, thisAnnotation.getBoundingClientRect())){
+			  candidates.push(thisAnnotation);
 		  }
-		  
 	  }
+	  if(candidates.length === 1) {
+		  return candidates[0];
+	  }
+	  if(candidates.length > 1) {
+		  console.warn("Multiple candidates for overlay/ element matching! " + candidates.length + " matches found. See verbose logging for all matches.");
+		  console.debug(candidates);
+	  }
+	 
 	  return null;
 }
 
 function playPause(){
 	
-	if(audio && !audio.paused && !audio.ended){
-		audio.pause();
-	}else{
-		if(audio){
-			audio.play();
-		}else{
-			playAudioFromAttachment(null, null);
-		}
-	}
+	init = true;
+	initAudioFunctionality();
+//	if(audio && !audio.paused && !audio.ended){
+//		audio.pause();
+//	}else{
+//		if(audio){
+//			audio.play();
+//		}else{
+//			playAudioFromAttachment(null, null);
+//		}
+//	}
 }
 
-function checkLinkAnnotationsForFilenameErrors() {
-	if(getNoOfAudioAttachments() > 1){
-		
-		let ancestor = document.getElementById('annotationLayer'),
-		  descendents = ancestor.getElementsByTagName('A');
-
-		  let i, thisAnnotation;
-		  //Loop alle elementen in annotationLayer
-		  for (i = 0; i < descendents.length; ++i) {
-			  thisAnnotation = descendents[i];
-			  if(thisAnnotation.href.includes('audio@')){
-				  let urlArr = thisAnnotation.href.split("#");
-				  let urlStr = urlArr[urlArr.length - 1].replace('audio@','');
-				  //Geen / betekent geen file
-				  if(!urlStr.includes("/")){
-					  return false;
-				  }else{
-					  //Wel een /. Kijk of het een "truthy" value heeft. Blegh.
-					  //https://stackoverflow.com/a/5515349 voor "truthy" 
-					  var myFilename = urlStr.split("/")[0];
-					  if(!myFilename){
-						  return false;
-					  }	
-				  }
-			  }
-		  }
-//		
-//		
-//		var thisElement;
-//		var ancestor = document.getElementById('viewer'),
-//		descendents = ancestor.getElementsByTagName('SPAN');
-//		
-//		//Bekijk alle <span> objecten in de viewer
-//		for (let i = 0; i < descendents.length; ++i) {
-//			thisElement = descendents[i];
-//			//Kijk of er een annotation over deze <span> ligt
-//			var thisAnnotation = getAnnotationByPosition(thisElement.getBoundingClientRect().x, thisElement.getBoundingClientRect().width);
-//			//Als er een annotation overheen ligt...
-//			if(thisAnnotation != null){
-//				if(thisAnnotation.childElementCount > 0 &&
-//						thisAnnotation.firstElementChild.hasAttribute("href") &&
-//						thisAnnotation.firstElementChild.href.includes('audio@')){
-//					
-//					let urlArr = thisAnnotation.firstElementChild.href.split("#");
-//					let urlStr = urlArr[urlArr.length - 1].replace('audio@','');
-//					//Geen / betekent geen file
-//					if(!urlStr.includes("/")){
-//						return false;
-//					}else{
-//						//Wel een /. Kijk of het een "truthy" value heeft. Blegh.
-//						//https://stackoverflow.com/a/5515349 voor "truthy" 
-//						var myFilename = urlStr.split("/")[0];
-//						if(!myFilename){
-//							return false;
-//						}
-//					}
-//				}
-//			}
-//		}
+function checkLinkAnnotationForFilenameErrors(thisAnnotation) {
+	
+	var expl = "Cannot create audio link: There is more than one audio attachment in this file and there " +
+					"is a file indicator missing in this LinkAnnotation. See verbose log for more information.";
+	
+	var debugExpl = "If using more than one audio attachment, LinkAnnotations starting with 'audio@' MUST use the following syntax:" +
+					"audio@<filename>/<timeStart>[-<timeEnd>], per example: 'audio@myfile.mp3/0.0' which starts at 0.0 seconds or audio@myfile.mp3/1.0-5.0, which starts at 1.0 seconds and " +
+					"will highlight the text while the audio.currentTime between 1.0 and 5.0 seconds. When using just one audio attachment, the filename may be omitted: 'audio@5.0' or 'audio@1.4-2.3'."; 
+	
+	if(getNoOfAudioAttachments() <= 1){
+		return true;
+	}
+	
+	if(thisAnnotation.href.includes('audio@')){
+		let urlArr = thisAnnotation.href.split("#");
+		let urlStr = urlArr[urlArr.length - 1].replace('audio@','');
+		//Geen / betekent geen file
+		if(!urlStr.includes("/")){
+			console.warn(expl);
+			console.debug(debugExpl);
+			console.debug("Violating annotation: ",thisAnnotation);
+			return false;
+		}else{
+			//Wel een /. Kijk of het een "truthy" value heeft. Blegh.
+			//https://stackoverflow.com/a/5515349 voor "truthy" 
+			var myFilename = urlStr.split("/")[0];
+			if(!myFilename){
+				console.warn(expl);
+				console.debug(debugExpl);
+				console.debug("Violating annotation: ",thisAnnotation);
+				return false;
+			}	
+		}
 	}
 	return true;
 }
@@ -2372,19 +2426,15 @@ function hideAudioButton(){
 	document.getElementById("attachmentAudio").setAttribute("hidden", "true");
 }
 
+
 function initAudioFunctionality() {
 	
-	var noOfAtts = getNoOfAudioAttachments();
-	if(noOfAtts < 1){
-		hideAudioButton();
+	if(!init){
 		return;
 	}
 	
-	if(!checkLinkAnnotationsForFilenameErrors()){
-		console.error("Cannot initiate Audio functionality: There is more than one audio attachment in this file and there " +
-				"are file indicators missing in at least one LinkAnnotation. If using more than one audio attachment, LinkAnnotations starting with 'audio@' MUST use the following syntax:" +
-				"audio@<filename>/<timeStart>[-<timeEnd>], per example: 'audio@myfile.mp3/0.0' which starts at 0.0 seconds or audio@myfile.mp3/1.0-5.0, which starts at 1.0 seconds and " +
-				"will highlight the text while the audio.currentTime between 1.0 and 5.0 seconds. When using just one audio attachment, the filename may be omitted: 'audio@5.0' or 'audio@1.4-2.3'.");
+	var noOfAtts = getNoOfAudioAttachments();
+	if(noOfAtts < 1){
 		hideAudioButton();
 		return;
 	}
@@ -2399,12 +2449,15 @@ function initAudioFunctionality() {
 	for (let i = 0; i < descendents.length; ++i) {
 		thisElement = descendents[i];
 		//Kijk of er een annotation over deze <span> ligt
-		var thisAnnotation = getAnnotationByPosition(thisElement.getBoundingClientRect().x, thisElement.getBoundingClientRect().width);
+		var thisAnnotation = getAnnotationByPosition(thisElement.getBoundingClientRect());
 		//Als er een annotation overheen ligt...
 		if(thisAnnotation != null){
 			if(thisAnnotation.childElementCount > 0 &&
 					thisAnnotation.firstElementChild.hasAttribute("href") &&
 					thisAnnotation.firstElementChild.href.includes('audio@')){
+				if(!checkLinkAnnotationForFilenameErrors(thisAnnotation.firstElementChild)){
+					continue;
+				}
 				let urlArr = thisAnnotation.firstElementChild.href.split("#");
 				let myFilename, myLinkStartTime, myLinkEndTime;
 				let urlStr = urlArr[urlArr.length - 1].replace('audio@','');
@@ -2429,7 +2482,7 @@ function initAudioFunctionality() {
 					myFilename = getFirstAudioAttachment().filename;
 					if(urlStr.includes("-")){
 						myLinkStartTime = urlStr.split("-")[0];
-						myLinkStartEndTime = urlStr.split("-")[1];
+						myLinkEndTime = urlStr.split("-")[1];
 					}else{
 						myLinkStartTime = urlStr;
 						myLinkEndTime = null;
@@ -2443,7 +2496,6 @@ function initAudioFunctionality() {
 				thisElement.setAttribute('data_audio_end', myLinkEndTime);
 				thisAnnotation.innerHtml ='';
 				thisAnnotation.parentNode.removeChild(thisAnnotation);
-				
 			}
 		}
 	}
@@ -2522,7 +2574,6 @@ function getNoOfAudioAttachments(){
 
 function getFirstAudioAttachment(){
 	
-	
 	var att = PDFViewerApplication.pdfAttachmentViewer.attachments;
 	if(att == null){
 		return null;
@@ -2547,8 +2598,6 @@ function getFirstAudioAttachment(){
 
 function createAudioPlayer(filename){
 
-	// Audio speelt nog niet of heeft einde bereikt. Haal MP3 op en speel die af
-	
 	// Haal attachments op
 	var att = PDFViewerApplication.pdfAttachmentViewer.attachments;
 	if(att == null){
@@ -2599,13 +2648,14 @@ function createAudioPlayer(filename){
 	    	  myStart = thisSpan.getAttribute('data_audio_start');
 	    	  myEnd = thisSpan.getAttribute('data_audio_end');
 	    	  
-	    	  if(audioCurrentTime > myStart && audioCurrentTime < myEnd){
+	    	  if(audioCurrentTime > myStart && audioCurrentTime < myEnd && myFile === currentAudiofile){
 
 		  		  if(thisSpan.style.backgroundColor !== "rgba(128, 128, 128, 0.5)") {
 		  			  thisSpan.style.textDecoration = "underline";
 		  			  thisSpan.style.fontStyle = "italic";
 		    		  thisSpan.style.backgroundColor = "rgba(128, 128, 128, 0.5)";
 		    	  }
+		  		  
 	    	  }else{
 	    		  thisSpan.style.textDecoration = null;
 	    		  thisSpan.style.backgroundColor = null;
