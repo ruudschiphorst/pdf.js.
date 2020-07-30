@@ -132,7 +132,6 @@ const KNOWN_GENERATORS = [
 ];
 
 var audio = null;
-var init = false;
 var currentAudiofile = null;
 
 class DefaultExternalServices {
@@ -2275,88 +2274,60 @@ function webViewerPresentationMode() {
   PDFViewerApplication.requestPresentationMode();
 }
 
-//Check if rectangle a contains rectangle b
-//Each object (a and b) should have 2 properties to represent the
-//top-left corner (top, left) and 2 for the bottom-right corner (bottom, right).
-function contains(a, b) {
-	return !(
-		b.top < a.top ||
-		b.left < a.left ||
-		b.bottom > a.bottom ||
-		b.right > a.right
-	);
-}
-
-//Check if rectangle a overlaps rectangle b
-//Each object (a and b) should have 2 properties to represent the
-//top-left corner (top, left) and 2 for the bottom-right corner (bottom, right).
-function overlaps(a, b) {
-	// no horizontal overlap
-	if (a.top >= b.bottom || b.top >= a.bottom) return false;
-
-	// no vertical overlap
-	if (a.left >= b.right || b.left >= a.right) return false;
-
-	return true;
-}
-
-//Check if rectangle a touches rectangle b
-//Each object (a and b) should have 2 properties to represent the
-//top-left corner (top, left) and 2 for the bottom-right corner (bottom, right).
-function touches(a, b) {
-	// has horizontal gap
-	if (a.top > b.bottom || b.top > a.bottom) return false;
-
-	// has vertical gap
-	if (a.left > b.right || b.left > a.right) return false;
-
-	return true;
-}
-
-function intersectRect(rect1, rect2) {
+function intersectRect(r1, r2){
 	
-	return !(rect1.right < rect2.left || 
-            rect1.left > rect2.right || 
-            rect1.bottom < rect2.top || 
-            rect1.top > rect2.bottom);
-	
-	
-//	var check2 = intersectRuuct(rect1, rect2);
-//	if(check2){
-//		return true;
-//	}
-//	
-//	return false;
+	if(Math.trunc(r1.x) === Math.trunc(r2.x)){
+		if(r1.y > r2.y && r1.y < r2.bottom){
+			return true;
+		}
+		if(r2.y > r1.y && r2.y < r1.bottom){
+			return true;
+		}
+	}
+	return false;
 }
-
-
-//function intersectRect(r1, r2){
-//	
-//	if(Math.trunc(r1.x) === Math.trunc(r2.x)){
-//		if(r1.y > r2.y && r1.y < r2.bottom){
-//			return true;
-//		}
-//		if(r2.y > r1.y && r2.y < r1.bottom){
-//			return true;
-//		}
-//	}
-//	return false;
-//	
-//}
-
 
 function getAnnotationByPosition(rect){
-	let ancestor = document.getElementById('annotationLayer'),
-	  descendents = ancestor.getElementsByTagName('SECTION');
+	
+	let ancestors = document.getElementsByClassName('annotationLayer');
+	
+	var candidates = [];
+	let i, thisAnnotationLayer;
+	for(i = 0; i < ancestors.length; i++){
+		let j, thisAnnotation, descendents;
+		thisAnnotationLayer = ancestors[i];
+		descendents = thisAnnotationLayer.getElementsByTagName('SECTION');
+		for (j = 0; j < descendents.length; ++j) {
+			thisAnnotation = descendents[j];
+			if(intersectRect(rect, thisAnnotation.getBoundingClientRect())){
+				candidates.push(thisAnnotation);
+			}
+		}
+	}
+	
+	if(candidates.length === 1) {
+		return candidates[0];
+	}
+	if(candidates.length > 1) {
+		console.warn("Multiple candidates for overlay/ element matching! " + candidates.length + " matches found. See verbose logging for all matches.");
+		console.debug(candidates);
+	}
+	 
+	return null;
+}
+
+function getElementByPosition(rect){
+	let ancestor = document.getElementById('viewer'),
+	  descendents = ancestor.getElementsByTagName('SPAN');
 	
 		var candidates = [];
 	
-	  let i, thisAnnotation;
+	  let i, thisElement;
 	  //Loop alle elementen in annotationLayer
 	  for (i = 0; i < descendents.length; ++i) {
-		  thisAnnotation = descendents[i];
-		  if(intersectRect(rect, thisAnnotation.getBoundingClientRect())){
-			  candidates.push(thisAnnotation);
+		  thisElement = descendents[i];
+		  if(intersectRect(rect, thisElement.getBoundingClientRect())){
+			  candidates.push(thisElement);
 		  }
 	  }
 	  if(candidates.length === 1) {
@@ -2372,17 +2343,15 @@ function getAnnotationByPosition(rect){
 
 function playPause(){
 	
-	init = true;
-	initAudioFunctionality();
-//	if(audio && !audio.paused && !audio.ended){
-//		audio.pause();
-//	}else{
-//		if(audio){
-//			audio.play();
-//		}else{
-//			playAudioFromAttachment(null, null);
-//		}
-//	}
+	if(audio && !audio.paused && !audio.ended){
+		audio.pause();
+	}else{
+		if(audio){
+			audio.play();
+		}else{
+			playAudioFromAttachment(null, null);
+		}
+	}
 }
 
 function checkLinkAnnotationForFilenameErrors(thisAnnotation) {
@@ -2428,10 +2397,6 @@ function hideAudioButton(){
 
 
 function initAudioFunctionality() {
-	
-	if(!init){
-		return;
-	}
 	
 	var noOfAtts = getNoOfAudioAttachments();
 	if(noOfAtts < 1){

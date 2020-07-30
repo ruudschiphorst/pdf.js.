@@ -87,7 +87,7 @@ class AnnotationLayerBuilder {
         }
         this.div = document.createElement("div");
         this.div.className = "annotationLayer";
-        this.div.id = "annotationLayer";
+//        this.div.id = "annotationLayer";
         this.pageDiv.appendChild(this.div);
         parameters.div = this.div;
 
