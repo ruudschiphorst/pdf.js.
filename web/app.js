@@ -133,6 +133,8 @@ const KNOWN_GENERATORS = [
 
 var audio = null;
 var currentAudiofile = null;
+var audioStopTimes = [];
+var currentAudioStopTime;
 
 class DefaultExternalServices {
   constructor() {
@@ -2341,17 +2343,60 @@ function getElementByPosition(rect){
 	  return null;
 }
 
+function tryParseJSON (jsonString){
+    try {
+        var o = JSON.parse(jsonString);
+
+        // Handle non-exception-throwing cases:
+        // Neither JSON.parse(false) or JSON.parse(1234) throw errors, hence the type-checking,
+        // but... JSON.parse(null) returns null, and typeof null === "object", 
+        // so we must check for that, too. Thankfully, null is falsey, so this suffices:
+        if (o && typeof o === "object") {
+            return o;
+        }
+    }
+    catch (e) {  }
+
+    return false;
+};
+
 function playPause(){
 	
-	if(audio && !audio.paused && !audio.ended){
-		audio.pause();
-	}else{
-		if(audio){
+	handlePlayPause("toggle");
+	
+}
+
+function handlePlayPause(instruction){
+	
+	switch (instruction) {
+	
+    case "pause": 
+    	if(audio && !audio.paused && !audio.ended){
+    		audio.pause();
+    	}
+      break;
+    case "play":
+    	if(audio){
 			audio.play();
 		}else{
 			playAudioFromAttachment(null, null);
 		}
+    	break;
+    case "toggle":
+    	if(audio && !audio.paused && !audio.ended){
+    		audio.pause();
+    	}else{
+    		if(audio){
+    			audio.play();
+    		}else{
+    			playAudioFromAttachment(null, null);
+    		}
+    	}
+    	break;
+    default:
+    	console.warn("Unknown pause instruction: '" + instruction + "'. Please use play/pause/toggle as value.");
 	}
+	
 }
 
 function checkLinkAnnotationForFilenameErrors(thisAnnotation) {
@@ -2395,6 +2440,37 @@ function hideAudioButton(){
 	document.getElementById("attachmentAudio").setAttribute("hidden", "true");
 }
 
+//function parseAnnotationParams(params){
+//	
+//	let myFilename, myLinkStartTime, myLinkEndTime, myLinkStopTime, myLinkPause;
+//	
+//	myFilename = myJsonObj.filename;
+//	myLinkStartTime = myJsonObj.timeStart;
+//	myLinkEndTime = myJsonObj.timeEnd;
+//	myLinkStopTime = myJsonObj.timeStop;
+//	myLinkPause = myJsonObj.pauze;
+//	
+//	
+//	if(myLinkPause){
+//		if(myFilename || myLinkStartTime || myLinkEndTime || myLinkStopTime){
+//			console.warn("Audio link contains a Pause command, but also has other attributes. All other attributes will be ignored.");
+//			return true;
+//		}
+//	}
+//	
+//	var noOfAtts = getNoOfAudioAttachments();
+//	if(noOfAtts > 1){
+//		if(!myFilename){
+//			console.warn("Cannot create audio link: There is more than one audio attachment in this file and there " +
+//					"is a file indicator missing in this LinkAnnotation. See verbose log for more information.");
+//			return false;
+//		}
+//	}
+//	
+//	
+//	
+//}
+
 
 function initAudioFunctionality() {
 	
@@ -2418,53 +2494,58 @@ function initAudioFunctionality() {
 		//Als er een annotation overheen ligt...
 		if(thisAnnotation != null){
 			if(thisAnnotation.childElementCount > 0 &&
-					thisAnnotation.firstElementChild.hasAttribute("href") &&
-					thisAnnotation.firstElementChild.href.includes('audio@')){
+					thisAnnotation.firstElementChild.hasAttribute("href")){
 				if(!checkLinkAnnotationForFilenameErrors(thisAnnotation.firstElementChild)){
 					continue;
 				}
-				let urlArr = thisAnnotation.firstElementChild.href.split("#");
-				let myFilename, myLinkStartTime, myLinkEndTime;
-				let urlStr = urlArr[urlArr.length - 1].replace('audio@','');
-				//mijnmp3.mp3/0.0-5.0 
-				//OF
-				//mijnmp3.mp3/0.0
-				if(urlStr.includes("/")){
-					myFilename = urlStr.split("/")[0];
-					//mijnmp3.mp3/0.0-5.0 
-					if(urlStr.split("/")[1].includes("-")){
-						myLinkStartTime = urlStr.split("/")[1].split("-")[0];
-						myLinkEndTime = urlStr.split("/")[1].split("-")[1];
-						//mijnmp3.mp3/0.0
-					}else{
-						myLinkStartTime = urlStr.split("/")[1];
-						myLinkEndTime = null;
-					}
-				//0.0-5.0 
-				//OF
-				//0.0
-				}else{
-					myFilename = getFirstAudioAttachment().filename;
-					if(urlStr.includes("-")){
-						myLinkStartTime = urlStr.split("-")[0];
-						myLinkEndTime = urlStr.split("-")[1];
-					}else{
-						myLinkStartTime = urlStr;
-						myLinkEndTime = null;
-					}
+				let myJsonObj = tryParseJSON(decodeURIComponent(thisAnnotation.firstElementChild.href.split("#")[1]));
+				if(!myJsonObj){
+					continue;
 				}
+				
+				let myFilename, myLinkStartTime, myLinkEndTime, myLinkStopTime, myLinkPause;
+				
+				myFilename = myJsonObj.filename;
+				myLinkStartTime = myJsonObj.timeStart;
+				myLinkEndTime = myJsonObj.timeEnd;
+				myLinkStopTime = myJsonObj.timeStop;
+				myLinkPause = myJsonObj.pauze;
+				
+				if(myLinkStopTime){
+					audioStopTimes.push(parseFloat(myLinkStopTime));
+				}
+				
 				
 				thisElement.onclick = function() { playAudioFromAttachment(myFilename, myLinkStartTime);} 
 				thisElement.style.cursor = 'pointer';
 				thisElement.setAttribute('data_audio_file', myFilename);
 				thisElement.setAttribute('data_audio_start', myLinkStartTime);
 				thisElement.setAttribute('data_audio_end', myLinkEndTime);
+				thisElement.setAttribute('data_audio_stop', myLinkStopTime);
+				thisElement.setAttribute('data_audio_pause', myLinkPause);
 				thisAnnotation.innerHtml ='';
 				thisAnnotation.parentNode.removeChild(thisAnnotation);
 			}
 		}
 	}
-	
+	if(audioStopTimes.length > 0) {
+		audioStopTimes.sort(function(a, b){
+		    return a - b;
+		});
+		currentAudioStopTime = audioStopTimes[0];
+	}else{
+		currentAudioStopTime = 9999999;
+	}
+}
+
+function setNextAudioStopTime() {
+	for(let i = 0; i < audioStopTimes.length; ++i){
+		if(audioStopTimes[i] > currentAudioStopTime){
+			currentAudioStopTime = audioStopTimes[i];
+			return;
+		}
+	}
+	currentAudioStopTime = 9999999;
 }
 
 function playAudioFromAttachment(filename, timeStartAt = 0.0) {
@@ -2624,6 +2705,11 @@ function createAudioPlayer(filename){
 	    	  }else{
 	    		  thisSpan.style.textDecoration = null;
 	    		  thisSpan.style.backgroundColor = null;
+	    	  }
+	    	  
+	    	  if(audioCurrentTime >= currentAudioStopTime){
+	    		  audio.pause();
+	    		  setNextAudioStopTime();
 	    	  }
 	      }
 	  }; 
