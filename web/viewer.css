@@ -838,6 +838,11 @@ html[dir='rtl'] .toolbarButton.pageDown::before {
   content: url(images/treeitem-collapsed.png);
 }
 
+.toolbarButton.toggleAnnotationVisibility::before,
+.secondaryToolbarButton.toggleAnnotationVisibility::before {
+  content: url(images/secondaryToolbarButton-selectTool.png);
+}
+
 .toolbarButton.print::before,
 .secondaryToolbarButton.print::before {
   content: url(images/toolbarButton-print.png);

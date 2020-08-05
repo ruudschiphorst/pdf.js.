@@ -76,6 +76,7 @@ function getViewerConfiguration() {
       print: document.getElementById("print"),
       presentationModeButton: document.getElementById("presentationMode"),
       attachmentAudio: document.getElementById("attachmentAudio"),	//RUUD
+      toggleAnnotationVisibility: document.getElementById("toggleAnnotationVisibility"),	//RUUD
       download: document.getElementById("download"),
       viewBookmark: document.getElementById("viewBookmark"),
     },

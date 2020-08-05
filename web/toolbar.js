@@ -77,6 +77,10 @@ class Toolbar {
           element: options.attachmentAudio,
           eventName: "playpause",		//RUUD
       },
+      {
+          element: options.toggleAnnotationVisibility,
+          eventName: "toggleannotationvisibility",		//RUUD
+      },
       { element: options.download, eventName: "download" },
       { element: options.viewBookmark, eventName: null },
     ];

@@ -133,6 +133,7 @@ const KNOWN_GENERATORS = [
 
 var audio = null;
 var currentAudiofile = null;
+var currentVisibilityAnnotations = "visible";
 
 class DefaultExternalServices {
   constructor() {
@@ -1701,6 +1702,7 @@ const PDFViewerApplication = {
     eventBus._on("updatefindmatchescount", webViewerUpdateFindMatchesCount);
     eventBus._on("updatefindcontrolstate", webViewerUpdateFindControlState);
     eventBus._on("playpause", playPause); //RUUD
+    eventBus._on("toggleannotationvisibility", toggleAnnotationsVisible); //RUUD
     eventBus._on("textlayerrendered", initAudioFunctionality);
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
       eventBus._on("fileinputchange", webViewerFileInputChange);
@@ -2395,6 +2397,23 @@ function hideAudioButton(){
 	document.getElementById("attachmentAudio").setAttribute("hidden", "true");
 }
 
+function toggleAnnotationsVisible(){
+	if(currentVisibilityAnnotations === "visible"){
+		currentVisibilityAnnotations = "hidden";
+	}else{
+		currentVisibilityAnnotations = "visible";
+	}
+	
+	let layers = document.getElementsByClassName('annotationLayer');
+	
+	let i, thisAnnotationLayer;
+	for(i = 0; i < layers.length; i++){
+		thisAnnotationLayer = layers[i];
+		thisAnnotationLayer.style.visibility = currentVisibilityAnnotations;
+	}
+}
+
+
 
 function initAudioFunctionality() {
 	
@@ -2408,22 +2427,22 @@ function initAudioFunctionality() {
 	//Pas bijbehorende normale text aan door een attribute te zetten en mouse cursor te veranderen
 	var thisElement;
 	var ancestor = document.getElementById('viewer'),
-	descendents = ancestor.getElementsByTagName('SPAN');
+	descendents = ancestor.getElementsByTagName('SECTION');
 	
 	//Bekijk alle <span> objecten in de viewer
 	for (let i = 0; i < descendents.length; ++i) {
 		thisElement = descendents[i];
 		//Kijk of er een annotation over deze <span> ligt
-		var thisAnnotation = getAnnotationByPosition(thisElement.getBoundingClientRect());
-		//Als er een annotation overheen ligt...
-		if(thisAnnotation != null){
-			if(thisAnnotation.childElementCount > 0 &&
-					thisAnnotation.firstElementChild.hasAttribute("href") &&
-					thisAnnotation.firstElementChild.href.includes('audio@')){
-				if(!checkLinkAnnotationForFilenameErrors(thisAnnotation.firstElementChild)){
+//		var thisAnnotation = getAnnotationByPosition(thisElement.getBoundingClientRect());
+//		//Als er een annotation overheen ligt...
+//		if(thisAnnotation != null){
+			if(thisElement.childElementCount > 0 &&
+					thisElement.firstElementChild.hasAttribute("href") &&
+					thisElement.firstElementChild.href.includes('audio@')){
+				if(!checkLinkAnnotationForFilenameErrors(thisElement.firstElementChild)){
 					continue;
 				}
-				let urlArr = thisAnnotation.firstElementChild.href.split("#");
+				let urlArr = thisElement.firstElementChild.href.split("#");
 				let myFilename, myLinkStartTime, myLinkEndTime;
 				let urlStr = urlArr[urlArr.length - 1].replace('audio@','');
 				//mijnmp3.mp3/0.0-5.0 
@@ -2459,15 +2478,21 @@ function initAudioFunctionality() {
 				thisElement.setAttribute('data_audio_file', myFilename);
 				thisElement.setAttribute('data_audio_start', myLinkStartTime);
 				thisElement.setAttribute('data_audio_end', myLinkEndTime);
-				thisAnnotation.innerHtml ='';
-				thisAnnotation.parentNode.removeChild(thisAnnotation);
+//				if(Math.floor(Math.random() * 10) === 9){
+//					thisElement.setAttribute("hidden", "true");
+//				}
+//				thisAnnotation.innerHtml ='';
+//				thisAnnotation.parentNode.removeChild(thisAnnotation);
+//				thisElement.removeChild(thisElement.firstElementChild);
+//				thisElement.style.visibility = "hidden"; 
 			}
-		}
+//		}
 	}
 	
 }
 
 function playAudioFromAttachment(filename, timeStartAt = 0.0) {
+	
 	//Ruud
 	//Er wordt gesprongen in de huidige file, dus niet opnieuw ophalen
 	if(currentAudiofile != null && filename === currentAudiofile ){
@@ -2614,7 +2639,7 @@ function createAudioPlayer(filename){
 	    	  myEnd = thisSpan.getAttribute('data_audio_end');
 	    	  
 	    	  if(audioCurrentTime > myStart && audioCurrentTime < myEnd && myFile === currentAudiofile){
-
+//	    		  thisSpan.style.visibility = "visible"; 
 		  		  if(thisSpan.style.backgroundColor !== "rgba(128, 128, 128, 0.5)") {
 		  			  thisSpan.style.textDecoration = "underline";
 		  			  thisSpan.style.fontStyle = "italic";
@@ -2622,6 +2647,7 @@ function createAudioPlayer(filename){
 		    	  }
 		  		  
 	    	  }else{
+//	    		  thisSpan.style.visibility = "hidden"; 
 	    		  thisSpan.style.textDecoration = null;
 	    		  thisSpan.style.backgroundColor = null;
 	    	  }
@@ -2633,6 +2659,7 @@ function createAudioPlayer(filename){
 		  var thisSpan;
 	      for (let i = 0; i < spans.length; ++i) {
 	    	  thisSpan = spans[i];
+//	    	  thisSpan.style.visibility = "hidden"; 
 	    	  thisSpan.style.textDecoration = null;
 	    	  thisSpan.style.backgroundColor = null;
 	      }
@@ -2659,7 +2686,7 @@ function getSpansWithDataId() {
 	var retval = [];
 	
 	var ancestor = document.getElementById('viewer'),
-	  descendents = ancestor.getElementsByTagName('SPAN');
+	  descendents = ancestor.getElementsByTagName('SECTION');
 	 for (let i = 0; i < descendents.length; ++i) {
 		 var thisElement = descendents[i];
 		 if(thisElement.hasAttribute("data_audio_start")){
@@ -2881,7 +2908,51 @@ function webViewerWheel(evt) {
   }
 }
 
+function getAnnot(rectX, offsetX, rectY, offsetY){
+	
+	let ancestors = document.getElementsByClassName('annotationLayer');
+	
+	var candidates = [];
+	let i, thisAnnotationLayer;
+	for(i = 0; i < ancestors.length; i++){
+		let j, thisAnnotation, descendents;
+		thisAnnotationLayer = ancestors[i];
+		descendents = thisAnnotationLayer.getElementsByTagName('SECTION');
+		for (j = 0; j < descendents.length; ++j) {
+			thisAnnotation = descendents[j];
+			var thisAnnRect = thisAnnotation.getBoundingClientRect();
+			if(((rectX + offsetX) < (thisAnnRect.x + thisAnnRect.width)) && ((rectX + offsetX) > thisAnnRect.x)){
+				if(((rectY+offsetY) < (thisAnnRect.y + thisAnnRect.height)) && ((rectY + offsetY) > thisAnnRect.y)){
+					candidates.push(thisAnnotation);
+				}
+			}
+
+		}
+	}
+	
+	if(candidates.length === 1) {
+		return candidates[0];
+	}
+	if(candidates.length > 1) {
+		console.warn("Multiple candidates for overlay/ element matching! " + candidates.length + " matches found. See verbose logging for all matches.");
+		console.debug(candidates);
+	}
+	 
+	return null;
+}
+
 function webViewerClick(evt) {
+		
+	if(evt.target.tagName === "SPAN"){
+		var rect = evt.target.getBoundingClientRect();
+		var x = evt.clientX - rect.left; //x position within the element.
+		var y = evt.clientY - rect.top;  //y position within the element.
+		
+		var annotToClick = getAnnot(rect.x, x ,rect.y, y);
+		if(annotToClick){
+			annotToClick.click();
+		}
+	}
 	
   // Avoid triggering the fallback bar when the user clicks on the
   // toolbar or sidebar. 
