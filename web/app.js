@@ -134,6 +134,8 @@ const KNOWN_GENERATORS = [
 var audio = null;
 var currentAudiofile = null;
 var currentVisibilityAnnotations = "visible";
+var audioStopTimes = [];
+var currentAudioStopTime;
 
 class DefaultExternalServices {
   constructor() {
@@ -2276,125 +2278,64 @@ function webViewerPresentationMode() {
   PDFViewerApplication.requestPresentationMode();
 }
 
-function intersectRect(r1, r2){
-	
-	if(Math.trunc(r1.x) === Math.trunc(r2.x)){
-		if(r1.y > r2.y && r1.y < r2.bottom){
-			return true;
-		}
-		if(r2.y > r1.y && r2.y < r1.bottom){
-			return true;
-		}
-	}
-	return false;
-}
+function tryParseJSON (jsonString){
+    try {
+        var o = JSON.parse(jsonString);
 
-function getAnnotationByPosition(rect){
-	
-	let ancestors = document.getElementsByClassName('annotationLayer');
-	
-	var candidates = [];
-	let i, thisAnnotationLayer;
-	for(i = 0; i < ancestors.length; i++){
-		let j, thisAnnotation, descendents;
-		thisAnnotationLayer = ancestors[i];
-		descendents = thisAnnotationLayer.getElementsByTagName('SECTION');
-		for (j = 0; j < descendents.length; ++j) {
-			thisAnnotation = descendents[j];
-			if(intersectRect(rect, thisAnnotation.getBoundingClientRect())){
-				candidates.push(thisAnnotation);
-			}
-		}
-	}
-	
-	if(candidates.length === 1) {
-		return candidates[0];
-	}
-	if(candidates.length > 1) {
-		console.warn("Multiple candidates for overlay/ element matching! " + candidates.length + " matches found. See verbose logging for all matches.");
-		console.debug(candidates);
-	}
-	 
-	return null;
-}
+        // Handle non-exception-throwing cases:
+        // Neither JSON.parse(false) or JSON.parse(1234) throw errors, hence the type-checking,
+        // but... JSON.parse(null) returns null, and typeof null === "object", 
+        // so we must check for that, too. Thankfully, null is falsey, so this suffices:
+        if (o && typeof o === "object") {
+            return o;
+        }
+    }
+    catch (e) {  }
 
-function getElementByPosition(rect){
-	let ancestor = document.getElementById('viewer'),
-	  descendents = ancestor.getElementsByTagName('SPAN');
-	
-		var candidates = [];
-	
-	  let i, thisElement;
-	  //Loop alle elementen in annotationLayer
-	  for (i = 0; i < descendents.length; ++i) {
-		  thisElement = descendents[i];
-		  if(intersectRect(rect, thisElement.getBoundingClientRect())){
-			  candidates.push(thisElement);
-		  }
-	  }
-	  if(candidates.length === 1) {
-		  return candidates[0];
-	  }
-	  if(candidates.length > 1) {
-		  console.warn("Multiple candidates for overlay/ element matching! " + candidates.length + " matches found. See verbose logging for all matches.");
-		  console.debug(candidates);
-	  }
-	 
-	  return null;
-}
+    return false;
+};
 
 function playPause(){
 	
-	if(audio && !audio.paused && !audio.ended){
-		audio.pause();
-	}else{
-		if(audio){
-			audio.play();
-		}else{
-			playAudioFromAttachment(null, null);
-		}
-	}
-}
-
-function checkLinkAnnotationForFilenameErrors(thisAnnotation) {
-	
-	var expl = "Cannot create audio link: There is more than one audio attachment in this file and there " +
-					"is a file indicator missing in this LinkAnnotation. See verbose log for more information.";
-	
-	var debugExpl = "If using more than one audio attachment, LinkAnnotations starting with 'audio@' MUST use the following syntax:" +
-					"audio@<filename>/<timeStart>[-<timeEnd>], per example: 'audio@myfile.mp3/0.0' which starts at 0.0 seconds or audio@myfile.mp3/1.0-5.0, which starts at 1.0 seconds and " +
-					"will highlight the text while the audio.currentTime between 1.0 and 5.0 seconds. When using just one audio attachment, the filename may be omitted: 'audio@5.0' or 'audio@1.4-2.3'."; 
-	
-	if(getNoOfAudioAttachments() <= 1){
-		return true;
-	}
-	
-	if(thisAnnotation.href.includes('audio@')){
-		let urlArr = thisAnnotation.href.split("#");
-		let urlStr = urlArr[urlArr.length - 1].replace('audio@','');
-		//Geen / betekent geen file
-		if(!urlStr.includes("/")){
-			console.warn(expl);
-			console.debug(debugExpl);
-			console.debug("Violating annotation: ",thisAnnotation);
-			return false;
-		}else{
-			//Wel een /. Kijk of het een "truthy" value heeft. Blegh.
-			//https://stackoverflow.com/a/5515349 voor "truthy" 
-			var myFilename = urlStr.split("/")[0];
-			if(!myFilename){
-				console.warn(expl);
-				console.debug(debugExpl);
-				console.debug("Violating annotation: ",thisAnnotation);
-				return false;
-			}	
-		}
-	}
-	return true;
+	handlePlayPause("toggle");
 }
 
 function hideAudioButton(){
 	document.getElementById("attachmentAudio").setAttribute("hidden", "true");
+	document.getElementById("toggleAnnotationVisibility").setAttribute("hidden", "true");
+}
+
+function handlePlayPause(instruction){
+
+	switch (instruction) {
+
+    case "pause": 
+    	if(audio && !audio.paused && !audio.ended){
+    		audio.pause();
+    	}
+    	break;
+    case "play":
+    	if(audio){
+			audio.play();
+		}else{
+			playAudioFromAttachment(null, null);
+		}
+    	break;
+    case "toggle":
+    	if(audio && !audio.paused && !audio.ended){
+    		audio.pause();
+    	}else{
+    		if(audio){
+    			audio.play();
+    		}else{
+    			playAudioFromAttachment(null, null);
+    		}
+    	}
+    	break;
+    default:
+    	console.warn("Unknown pause instruction: '" + instruction + "'. Please use play/pause/toggle as value.");
+	}
+
 }
 
 function toggleAnnotationsVisible(){
@@ -2432,63 +2373,61 @@ function initAudioFunctionality() {
 	//Bekijk alle <span> objecten in de viewer
 	for (let i = 0; i < descendents.length; ++i) {
 		thisElement = descendents[i];
-		//Kijk of er een annotation over deze <span> ligt
-//		var thisAnnotation = getAnnotationByPosition(thisElement.getBoundingClientRect());
-//		//Als er een annotation overheen ligt...
-//		if(thisAnnotation != null){
-			if(thisElement.childElementCount > 0 &&
-					thisElement.firstElementChild.hasAttribute("href") &&
-					thisElement.firstElementChild.href.includes('audio@')){
-				if(!checkLinkAnnotationForFilenameErrors(thisElement.firstElementChild)){
-					continue;
-				}
-				let urlArr = thisElement.firstElementChild.href.split("#");
-				let myFilename, myLinkStartTime, myLinkEndTime;
-				let urlStr = urlArr[urlArr.length - 1].replace('audio@','');
-				//mijnmp3.mp3/0.0-5.0 
-				//OF
-				//mijnmp3.mp3/0.0
-				if(urlStr.includes("/")){
-					myFilename = urlStr.split("/")[0];
-					//mijnmp3.mp3/0.0-5.0 
-					if(urlStr.split("/")[1].includes("-")){
-						myLinkStartTime = urlStr.split("/")[1].split("-")[0];
-						myLinkEndTime = urlStr.split("/")[1].split("-")[1];
-						//mijnmp3.mp3/0.0
-					}else{
-						myLinkStartTime = urlStr.split("/")[1];
-						myLinkEndTime = null;
-					}
-				//0.0-5.0 
-				//OF
-				//0.0
-				}else{
-					myFilename = getFirstAudioAttachment().filename;
-					if(urlStr.includes("-")){
-						myLinkStartTime = urlStr.split("-")[0];
-						myLinkEndTime = urlStr.split("-")[1];
-					}else{
-						myLinkStartTime = urlStr;
-						myLinkEndTime = null;
-					}
-				}
-				
-				thisElement.onclick = function() { playAudioFromAttachment(myFilename, myLinkStartTime);} 
-				thisElement.style.cursor = 'pointer';
-				thisElement.setAttribute('data_audio_file', myFilename);
-				thisElement.setAttribute('data_audio_start', myLinkStartTime);
-				thisElement.setAttribute('data_audio_end', myLinkEndTime);
-//				if(Math.floor(Math.random() * 10) === 9){
-//					thisElement.setAttribute("hidden", "true");
-//				}
-//				thisAnnotation.innerHtml ='';
-//				thisAnnotation.parentNode.removeChild(thisAnnotation);
-//				thisElement.removeChild(thisElement.firstElementChild);
-//				thisElement.style.visibility = "hidden"; 
+		if(thisElement.childElementCount > 0 &&
+				thisElement.firstElementChild.hasAttribute("href")){
+			
+			let myJsonObj = tryParseJSON(decodeURIComponent(thisElement.firstElementChild.href.split("#")[1]));
+			if(!myJsonObj){
+				continue;
 			}
-//		}
+			
+			let myFilename, myLinkStartTime, myLinkEndTime, myLinkStopTime, myLinkPause;
+
+			myFilename = myJsonObj.filename || myJsonObj.fn;
+			myLinkStartTime = myJsonObj.timeStart || myJsonObj.ts;
+			myLinkEndTime = myJsonObj.timeHighlightUntil || myJsonObj.hl;
+			myLinkStopTime = myJsonObj.timeStop || myJsonObj.tsp;
+			myLinkPause = myJsonObj.pause || myJsonObj.p;
+
+			if(myLinkStopTime){
+				audioStopTimes.push(parseFloat(myLinkStopTime));
+			}
+			
+			if(myLinkPause){
+				thisElement.onclick = function() { handlePlayPause(myLinkPause);} 
+			}else{
+				if(myLinkStartTime){
+					if(myFilename || getNoOfAudioAttachments() === 1){
+						thisElement.onclick = function() { playAudioFromAttachment(myFilename, myLinkStartTime);} 
+					}
+				}
+			}
+			thisElement.style.cursor = 'pointer';
+			thisElement.setAttribute('data_audio_file', myFilename);
+			thisElement.setAttribute('data_audio_start', myLinkStartTime);
+			thisElement.setAttribute('data_audio_end', myLinkEndTime);
+			thisElement.setAttribute('data_audio_stop', myLinkStopTime);
+			thisElement.setAttribute('data_audio_pause', myLinkPause);
+		}
 	}
-	
+	if(audioStopTimes.length > 0) {
+		audioStopTimes.sort(function(a, b){
+		    return a - b;
+		});
+		currentAudioStopTime = audioStopTimes[0];
+	}else{
+		currentAudioStopTime = 9999999;
+	}
+}
+
+function getNextAudioStopTime(audioCurrentTime) {
+	for(let i = 0; i < audioStopTimes.length; ++i){
+		if(audioStopTimes[i] > audioCurrentTime){
+			currentAudioStopTime = audioStopTimes[i];
+			return;
+		}
+	}
+	currentAudioStopTime = 9999999;
 }
 
 function playAudioFromAttachment(filename, timeStartAt = 0.0) {
@@ -2631,40 +2570,39 @@ function createAudioPlayer(filename){
 			// tijd wijzigt en de boel in de soep loopt
   	  var audioCurrentTime = audio.currentTime
   	  var thisSpan;
-	      for (let i = 0; i < spans.length; ++i) {
-	    	  thisSpan = spans[i];
-	    	  var myFile, myStart, myEnd;
-	    	  myFile = thisSpan.getAttribute('data_audio_file');
-	    	  myStart = thisSpan.getAttribute('data_audio_start');
-	    	  myEnd = thisSpan.getAttribute('data_audio_end');
-	    	  
-	    	  if(audioCurrentTime > myStart && audioCurrentTime < myEnd && myFile === currentAudiofile){
-//	    		  thisSpan.style.visibility = "visible"; 
-		  		  if(thisSpan.style.backgroundColor !== "rgba(128, 128, 128, 0.5)") {
-		  			  thisSpan.style.textDecoration = "underline";
-		  			  thisSpan.style.fontStyle = "italic";
-		    		  thisSpan.style.backgroundColor = "rgba(128, 128, 128, 0.5)";
-		    	  }
-		  		  
-	    	  }else{
-//	    		  thisSpan.style.visibility = "hidden"; 
-	    		  thisSpan.style.textDecoration = null;
-	    		  thisSpan.style.backgroundColor = null;
+      for (let i = 0; i < spans.length; ++i) {
+    	  thisSpan = spans[i];
+    	  var myFile, myStart, myEnd;
+    	  myFile = thisSpan.getAttribute('data_audio_file');
+    	  myStart = thisSpan.getAttribute('data_audio_start');
+    	  myEnd = thisSpan.getAttribute('data_audio_end');
+    	  
+    	  if(audioCurrentTime > myStart && audioCurrentTime < myEnd && myFile === currentAudiofile){
+	  		  if(thisSpan.style.backgroundColor !== "rgba(128, 128, 128, 0.5)") {
+	    		  thisSpan.style.backgroundColor = "rgba(128, 128, 128, 0.5)";
 	    	  }
-	      }
-	  }; 
-	  // Als de audio stopt willen we alle annotations on-markeren (wat
-		// nog steeds een woord is)
-	  audio.onpause = function(){ 	
-		  var thisSpan;
-	      for (let i = 0; i < spans.length; ++i) {
-	    	  thisSpan = spans[i];
-//	    	  thisSpan.style.visibility = "hidden"; 
-	    	  thisSpan.style.textDecoration = null;
-	    	  thisSpan.style.backgroundColor = null;
-	      }
-  	  
-	  };
+	  		  
+    	  }else{
+    		  thisSpan.style.textDecoration = null;
+    		  thisSpan.style.backgroundColor = null;
+    	  }
+    	  
+    	  if(audioCurrentTime >= currentAudioStopTime){
+    		  audio.pause();
+    	  }
+    	  getNextAudioStopTime(audioCurrentTime);
+      }
+	}; 
+	// Als de audio stopt willen we alle annotations on-markeren (wat
+	// nog steeds een woord is)
+	audio.onpause = function(){ 	
+		var thisSpan;
+		for (let i = 0; i < spans.length; ++i) {
+			thisSpan = spans[i];
+			thisSpan.style.textDecoration = null;
+			thisSpan.style.backgroundColor = null;
+		}
+	};
 }
 
 function gotoHighlightedSpan() {
@@ -2926,7 +2864,6 @@ function getAnnot(rectX, offsetX, rectY, offsetY){
 					candidates.push(thisAnnotation);
 				}
 			}
-
 		}
 	}
 	
@@ -2944,6 +2881,7 @@ function getAnnot(rectX, offsetX, rectY, offsetY){
 function webViewerClick(evt) {
 		
 	if(evt.target.tagName === "SPAN"){
+		//Als annotationLayer is verborgen, dan gaan we op zoek naar de annotation die hier eigenlijk zou moeten liggen en simuleer een click()
 		var rect = evt.target.getBoundingClientRect();
 		var x = evt.clientX - rect.left; //x position within the element.
 		var y = evt.clientY - rect.top;  //y position within the element.
